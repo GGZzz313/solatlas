@@ -39,8 +39,15 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
 | [JPL Approximate Planetary Ephemeris](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | Planet positions (embedded Keplerian elements + rates) |
 
-Roughly 1.4 million asteroids are known; the Atlas streams the ~30,000 best-characterized
-ones (which dominate visually) in parallel queries and dedupes them client-side.
+Roughly 1.5 million asteroids are known (the header shows the live count from JPL);
+the Atlas maps the ~50,000 best-characterized ones, which dominate visually.
+
+**Why a snapshot?** The JPL SSD APIs don't send CORS headers, so browsers can't
+query them directly. A GitHub Actions workflow
+([`data-refresh.yml`](.github/workflows/data-refresh.yml)) runs the queries
+server-side and commits the result to `data/asteroids.json`, refreshing it weekly
+(and on demand via *Run workflow*). The app loads that snapshot from its own origin —
+faster for visitors, kinder to NASA's servers, and still 100% real JPL data.
 
 ## 🚀 Run it
 
@@ -50,8 +57,8 @@ Any static file server works:
 npx http-server .        # or: python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`. The page needs network access to
-`ssd-api.jpl.nasa.gov` at load time.
+Then open `http://localhost:8000`. All data is served locally from
+`data/asteroids.json` — no external API access needed at runtime.
 
 ## 🧪 Tests
 
@@ -65,8 +72,9 @@ node test/orbits.test.js
 
 ## 🧭 How it works
 
-1. **Fetch** — five parallel SBDB queries (NEOs, main belt, trojans, centaurs, TNOs)
-   return packed JSON; rows stream into typed arrays as they arrive.
+1. **Fetch** — a weekly GitHub Actions job runs five SBDB queries (NEOs, main belt,
+   trojans, centaurs, TNOs) plus the CNEOS close-approach feed and commits one packed
+   JSON snapshot; the app ingests it into typed arrays and dedupes by designation.
 2. **Propagate** — per frame, mean anomaly is advanced from each body's epoch and
    Kepler's equation is solved by Newton iteration; the perifocal→ecliptic basis is
    precomputed once per object. On slower devices the population is updated in

@@ -135,17 +135,10 @@ if (typeof document !== "undefined") (() => {
 /* ============================================================
    2. Configuration / populations
    ============================================================ */
-const SBDB_API = "https://ssd-api.jpl.nasa.gov/sbdb_query.api";
-const CAD_API = "https://ssd-api.jpl.nasa.gov/cad.api";
-const SB_FIELDS = "pdes,name,a,e,i,om,w,ma,epoch,H,class,diameter";
-
-const QUERIES = [
-  { label: "near-Earth asteroids", params: "sb-group=neo&limit=5000" },
-  { label: "the main belt", params: "limit=20000" },
-  { label: "Jupiter trojans", params: "sb-class=TJN&limit=4000" },
-  { label: "centaurs", params: "sb-class=CEN&limit=1500" },
-  { label: "trans-Neptunian objects", params: "sb-class=TNO&limit=3500" },
-];
+// The JPL SSD APIs don't send CORS headers, so the browser can't query them
+// directly. A GitHub Actions workflow (.github/workflows/data-refresh.yml)
+// pulls the same queries server-side and commits this snapshot.
+const DATA_URL = "data/asteroids.json";
 
 const GROUPS = [
   { key: "NEO", label: "Near-Earth", color: [1.0, 0.42, 0.42], css: "#ff6b6b" },
@@ -812,46 +805,46 @@ async function loadAsteroids() {
   const fill = $("loader-fill");
   const status = $("loader-status");
   $("loader-error").hidden = true;
-  let done = 0, ok = 0;
-  status.textContent = "querying " + QUERIES[0].label + "…";
-
-  const jobs = QUERIES.map((q) =>
-    fetchJSON(`${SBDB_API}?fields=${SB_FIELDS}&sb-kind=a&${q.params}`)
-      .then((resp) => {
-        ingest(resp);
-        ok++;
-        if (!loadedOnce) {
-          loadedOnce = true;
-          $("loader").classList.add("done");
-        }
-      })
-      .catch((err) => console.warn("SBDB query failed:", q.label, err))
-      .finally(() => {
-        done++;
-        fill.style.width = Math.round((done / QUERIES.length) * 100) + "%";
-        status.textContent = done < QUERIES.length
-          ? `mapped ${state.totalLoaded.toLocaleString("en-US")} asteroids — loading ${QUERIES[Math.min(done, QUERIES.length - 1)].label}…`
-          : "done";
-      })
-  );
-  await Promise.allSettled(jobs);
-
-  if (!ok) {
+  status.textContent = "downloading NASA/JPL data snapshot…";
+  fill.style.width = "15%";
+  try {
+    const snap = await fetchJSON(DATA_URL);
+    fill.style.width = "70%";
+    status.textContent = "propagating orbits…";
+    let added = 0;
+    for (const q of snap.queries || []) added += ingest(q);
+    if (!added) throw new Error("snapshot contained no usable records");
+    fill.style.width = "100%";
+    const total = +snap.totalKnown;
+    if (total > 0) $("stat-known").textContent = total.toLocaleString("en-US");
+    if (snap.generated) {
+      const d = new Date(snap.generated);
+      if (isFinite(d.getTime())) {
+        $("snap-date").textContent =
+          ` · snapshot ${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+      }
+    }
+    renderCloseApproaches(snap.cad);
+    loadedOnce = true;
+    $("loader").classList.add("done");
+  } catch (err) {
+    console.warn("snapshot load failed:", err);
     status.textContent = "";
     $("loader-error-msg").textContent =
-      "Could not reach the NASA/JPL Small-Body Database API. Check your connection (or any ad-blocker rules for ssd-api.jpl.nasa.gov) and try again.";
+      "Could not load the asteroid data snapshot (data/asteroids.json). Check your connection and try again.";
     $("loader-error").hidden = false;
   }
 }
 
-/* ---- close approaches (JPL CNEOS) ---- */
-async function loadCloseApproaches() {
+/* ---- close approaches (JPL CNEOS, from the snapshot) ---- */
+function renderCloseApproaches(resp) {
   const list = $("cad-list");
   try {
-    const resp = await fetchJSON(`${CAD_API}?dist-max=10LD&date-min=now&date-max=%2B60&sort=date`);
     const ix = {};
     (resp.fields || []).forEach((f, k) => (ix[f] = k));
-    const rows = (resp.data || []).slice(0, 30);
+    if (!("des" in ix) || !("jd" in ix)) throw new Error("no cad data");
+    const now = jdNow();
+    const rows = (resp.data || []).filter((r) => +r[ix.jd] >= now - 0.5).slice(0, 30);
     if (!rows.length) {
       list.innerHTML = '<li class="cad-empty">no approaches within 10 LD in the next 60 days</li>';
       return;
@@ -1135,6 +1128,5 @@ window.addEventListener("error", (ev) => {
 });
 requestAnimationFrame((t) => { lastFrame = t; requestAnimationFrame(render); });
 loadAsteroids();
-loadCloseApproaches();
 
 })();
