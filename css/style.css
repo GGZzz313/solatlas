@@ -121,23 +121,70 @@ html, body {
   position: absolute;
   inset: -120px;
   background-image:
-    radial-gradient(1.2px 1.2px at 22px 34px, rgba(232, 237, 247, 0.9), transparent 100%),
-    radial-gradient(1px 1px at 120px 86px, rgba(125, 211, 252, 0.8), transparent 100%),
-    radial-gradient(1.4px 1.4px at 196px 150px, rgba(232, 237, 247, 0.7), transparent 100%),
-    radial-gradient(1px 1px at 64px 188px, rgba(196, 181, 253, 0.7), transparent 100%),
-    radial-gradient(0.8px 0.8px at 156px 22px, rgba(232, 237, 247, 0.55), transparent 100%),
-    radial-gradient(1px 1px at 230px 100px, rgba(232, 237, 247, 0.5), transparent 100%);
+    radial-gradient(1.6px 1.6px at 22px 34px, rgba(240, 246, 255, 1), transparent 100%),
+    radial-gradient(1.2px 1.2px at 120px 86px, rgba(125, 211, 252, 0.95), transparent 100%),
+    radial-gradient(1.8px 1.8px at 196px 150px, rgba(240, 246, 255, 0.9), transparent 100%),
+    radial-gradient(1.2px 1.2px at 64px 188px, rgba(196, 181, 253, 0.9), transparent 100%),
+    radial-gradient(1px 1px at 156px 22px, rgba(240, 246, 255, 0.7), transparent 100%),
+    radial-gradient(1.2px 1.2px at 230px 100px, rgba(240, 246, 255, 0.65), transparent 100%),
+    radial-gradient(1px 1px at 90px 130px, rgba(255, 222, 173, 0.6), transparent 100%);
   background-size: 260px 240px;
   animation: star-drift 90s linear infinite;
-  opacity: 0.7;
 }
 .loader-stars.ls2 {
-  background-size: 420px 380px;
+  background-size: 430px 390px;
   animation-duration: 160s;
   animation-direction: reverse;
-  opacity: 0.45;
+  opacity: 0.7;
 }
 @keyframes star-drift { to { transform: translate3d(-260px, 120px, 0); } }
+
+/* faint diagonal milky-way band */
+.loader-band {
+  position: absolute;
+  inset: -25%;
+  background: linear-gradient(115deg,
+    transparent 36%, rgba(140, 170, 230, 0.05) 44%, rgba(176, 204, 255, 0.11) 50%,
+    rgba(140, 170, 230, 0.05) 56%, transparent 64%);
+  filter: blur(8px);
+}
+
+/* occasional shooting stars */
+.shoot {
+  position: absolute;
+  width: 140px;
+  height: 1.5px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, #d6ecff);
+  filter: drop-shadow(0 0 6px rgba(125, 211, 252, 0.9));
+  opacity: 0;
+  transform: rotate(16deg);
+}
+.shoot.s1 { top: 16%; left: -10%; animation: shoot 11s linear 2.5s infinite; }
+.shoot.s2 { top: 58%; left: -14%; width: 100px; transform: rotate(11deg); animation: shoot 17s linear 9s infinite; }
+@keyframes shoot {
+  0%, 91% { opacity: 0; }
+  93% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(16deg) translateX(115vw); }
+}
+
+/* planet limb rising from the bottom of the frame */
+.loader-limb {
+  position: absolute;
+  left: 50%;
+  top: 78%;
+  width: 230vmax;
+  height: 230vmax;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side at 50% 12%, #0b1126 0%, #060a18 18%, #03050c 45%);
+  box-shadow:
+    0 -2px 36px rgba(125, 211, 252, 0.22),
+    0 -1px 90px rgba(96, 165, 250, 0.14),
+    inset 0 3px 28px rgba(165, 210, 255, 0.22);
+  border-top: 1px solid rgba(170, 214, 255, 0.32);
+}
 
 /* soft nebula glow behind the core */
 .loader-glow {
@@ -219,32 +266,69 @@ html, body {
 @keyframes breathe { 50% { transform: scale(1.12); } }
 
 .loader-title {
-  font-size: clamp(38px, 8vw, 72px);
+  position: relative;
+  font-size: clamp(22px, 7.6vw, 84px);
   font-weight: 700;
-  letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1.05;
   text-align: center;
-  padding-left: 0.12em; /* optically recenter tracked text */
-  background: linear-gradient(110deg,
-    #e8edf7 0%, var(--accent) 32%, #ffffff 50%, var(--accent2) 68%, #e8edf7 100%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: rise-in 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both,
-             title-shine 5.5s ease-in-out 0.8s infinite;
-  filter: drop-shadow(0 0 26px rgba(125, 211, 252, 0.22));
+  white-space: nowrap;
+  letter-spacing: 0.14em;
+  padding-left: 0.14em; /* optically recenter tracked text */
+  animation: title-track 2.2s cubic-bezier(0.16, 0.8, 0.25, 1) both;
 }
+@keyframes title-track {
+  from { letter-spacing: 0.46em; padding-left: 0.46em; }
+  to { letter-spacing: 0.14em; padding-left: 0.14em; }
+}
+.loader-title > span {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  color: #f1f6ff;
+  text-shadow:
+    0 0 1px #fff,
+    0 0 18px rgba(190, 226, 255, 0.55),
+    0 0 56px rgba(125, 211, 252, 0.4),
+    0 2px 90px rgba(196, 181, 253, 0.35);
+  animation: letter-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(0.25s + var(--i) * 0.05s);
+}
+@keyframes letter-in {
+  from { opacity: 0; transform: translateY(16px) scale(1.12); filter: blur(12px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+/* anamorphic lens flare sweeping behind the wordmark */
+.lt-flare {
+  position: absolute;
+  left: -12%;
+  right: -12%;
+  top: 54%;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(125, 211, 252, 0.5) 30%, #eaf6ff 50%,
+    rgba(196, 181, 253, 0.5) 70%, transparent 100%);
+  box-shadow: 0 0 22px 3px rgba(140, 200, 255, 0.5);
+  transform-origin: 50% 50%;
+  animation: flare-in 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.5s both,
+             flare-pulse 6s ease-in-out 3.2s infinite;
+}
+@keyframes flare-in {
+  from { opacity: 0; transform: scaleX(0); }
+  60% { opacity: 1; }
+  to { opacity: 0.8; transform: scaleX(1); }
+}
+@keyframes flare-pulse { 50% { opacity: 0.45; } }
 @keyframes title-shine {
   0% { background-position: 110% 0; }
   45%, 100% { background-position: -60% 0; }
 }
 .loader-sub {
-  color: var(--ink-dim);
-  font-size: clamp(13px, 1.8vw, 15.5px);
-  letter-spacing: 0.06em;
+  color: #aab8d8;
+  font-size: clamp(13px, 1.8vw, 16px);
+  letter-spacing: 0.09em;
   text-align: center;
+  text-shadow: 0 1px 12px rgba(4, 8, 20, 0.9);
 }
 .loader-bar {
   width: min(380px, 74vw);
@@ -517,17 +601,31 @@ html, body {
   pointer-events: none;
 }
 #hud-top > * { pointer-events: auto; }
+#hud-top::after {            /* gradient hairline under the HUD */
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 11px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(125, 211, 252, 0.35) 18%, rgba(170, 200, 255, 0.16) 50%,
+    rgba(196, 181, 253, 0.35) 82%, transparent 100%);
+  pointer-events: none;
+}
 
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 42px; height: 42px; flex: none; filter: drop-shadow(0 0 10px rgba(125, 211, 252, 0.35)); }
+.brand { display: flex; align-items: center; gap: 13px; }
+.brand-mark { width: 47px; height: 47px; flex: none; filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.45)); }
 .brand-mark .bm-comet { animation: comet-twinkle 2.6s ease-in-out infinite; }
 @keyframes comet-twinkle { 50% { opacity: 0.35; } }
 
 .brand h1 {
-  font-size: clamp(19px, 2.6vw, 26px);
+  font-size: clamp(21px, 2.9vw, 30px);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   line-height: 1;
+  color: #f1f6ff;
+  text-shadow: 0 0 22px rgba(140, 200, 255, 0.35);
 }
 .brand h1 em {
   font-style: normal;
@@ -564,14 +662,14 @@ html, body {
 .stat + .stat { border-left: 1px solid var(--glass-border); padding-left: 22px; }
 .stat-num {
   font-family: var(--mono);
-  font-size: clamp(17px, 2.2vw, 22px);
+  font-size: clamp(19px, 2.5vw, 26px);
   font-weight: 500;
-  color: var(--accent);
-  text-shadow: 0 0 18px rgba(125, 211, 252, 0.5);
+  color: #aee4ff;
+  text-shadow: 0 0 14px rgba(125, 211, 252, 0.75), 0 0 38px rgba(125, 211, 252, 0.35);
   font-variant-numeric: tabular-nums;
 }
-.stat-num.dim { color: var(--ink-dim); text-shadow: none; }
-.stat-label { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); margin-top: 3px; }
+.stat-num.dim { color: #9fb0d2; text-shadow: none; }
+.stat-label { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #8d99b6; margin-top: 4px; }
 
 .search-wrap { margin-left: auto; position: relative; width: min(300px, 38vw); }
 .search-ico {
@@ -826,5 +924,7 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .lo, .lo-sun, .pl-label.sel-marker::after,
   .loader-stars, .loader-glow, .loader-core > *, .loader-title,
+  .loader-title > span, .lt-flare,
   #loader-status::after, .brand h1 em, .brand-mark .bm-comet, .live-dot { animation: none; }
+  .shoot { display: none; }
 }
