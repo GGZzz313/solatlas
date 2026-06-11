@@ -300,6 +300,7 @@ const state = {
   selPlanet: null,         // selected planet index
   selMoon: null,           // selected moon index
   focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
+  camEaseRate: 9,          // lowered during the launch dolly-in, restored after
   showPHA: false,          // highlight potentially-hazardous asteroids
   totalLoaded: 0,
   shownCount: 0,
@@ -798,7 +799,11 @@ function render(now) {
 
   // camera easing (orientation, distance, and focus target)
   const c = state.cam;
-  const ease = 1 - Math.exp(-dt * 9);
+  // hand control back at normal speed once the launch dolly has settled
+  if (state.camEaseRate !== 9 && Math.abs(c.dist - c.tDist) < Math.max(c.tDist * 0.04, 1e-5)) {
+    state.camEaseRate = 9;
+  }
+  const ease = 1 - Math.exp(-dt * state.camEaseRate);
   c.yaw += (c.tYaw - c.yaw) * ease;
   c.pitch += (c.tPitch - c.pitch) * ease;
   c.dist += (c.tDist - c.dist) * ease;
@@ -1400,8 +1405,7 @@ async function loadAsteroids() {
     }
     renderCloseApproaches(snap.cad);
     renderSentry(snap.sentry);
-    loadedOnce = true;
-    $("loader").classList.add("done");
+    loaderReady();
   } catch (err) {
     console.warn("snapshot load failed:", err);
     status.textContent = "";
@@ -1409,6 +1413,36 @@ async function loadAsteroids() {
       "Could not load the asteroid data snapshot (data/asteroids.json). Check your connection and try again.";
     $("loader-error").hidden = false;
   }
+}
+
+/* Title screen holds until the user taps/presses, then the dissolve hands
+   off to a camera dolly: start far above the system and dive to the
+   default view in one continuous shot. */
+function loaderReady() {
+  loadedOnce = true;
+  const loader = $("loader");
+  loader.classList.add("ready");
+  $("loader-status").textContent = "ready";
+  $("loader-begin").hidden = false;
+  function launch() {
+    loader.removeEventListener("click", launch);
+    window.removeEventListener("keydown", onKey);
+    loader.classList.add("done");
+    const c = state.cam;
+    c.dist = 205;
+    c.pitch = 1.28;
+    c.yaw = c.tYaw + 0.6;
+    state.camEaseRate = 1.5;        // slow exponential ease ≈ 2.5 s dive
+    setTimeout(dismissHint, 9000);  // start the hint clock at launch, not load
+  }
+  function onKey(ev) {
+    if (["Shift", "Control", "Alt", "Meta"].includes(ev.key)) return;
+    launch();
+  }
+  // "click" (not pointerdown): the release must land on the loader too, or it
+  // falls through to the canvas as an orphan pointerup and picks an object
+  loader.addEventListener("click", launch);
+  window.addEventListener("keydown", onKey);
 }
 
 /* ---- close approaches (JPL CNEOS, from the snapshot) ---- */
@@ -2035,12 +2069,12 @@ window.addEventListener("keydown", (ev) => {
 const pointers = new Map();
 let dragDist = 0, pinchD0 = 0, distAtPinch = 0;
 function dismissHint() { $("hint").classList.add("gone"); }
-setTimeout(dismissHint, 9000);
 
 canvas.addEventListener("pointerdown", (ev) => {
   canvas.setPointerCapture(ev.pointerId);
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   dragDist = 0;
+  state.camEaseRate = 9;            // grabbing the camera cancels the launch dolly
   if (pointers.size === 2) {
     const [p1, p2] = [...pointers.values()];
     pinchD0 = Math.hypot(p1.x - p2.x, p1.y - p2.y);
@@ -2066,6 +2100,7 @@ canvas.addEventListener("pointermove", (ev) => {
   }
 });
 function endPointer(ev) {
+  if (!pointers.has(ev.pointerId)) return;   // orphan release (started elsewhere)
   const wasDrag = dragDist > 7 || pointers.size > 1;
   pointers.delete(ev.pointerId);
   if (!wasDrag && ev.type === "pointerup" && ev.target === canvas) {
@@ -2076,6 +2111,7 @@ canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", (ev) => {
   ev.preventDefault();
+  state.camEaseRate = 9;
   state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011), minDist(), 240);
   dismissHint();
 }, { passive: false });
