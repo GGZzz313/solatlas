@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05070f">
+<meta name="description" content="A living map of the solar system's asteroids — real orbital data from the NASA/JPL Small-Body Database, propagated and rendered in your browser.">
+<title>Asteroid Atlas — Live Solar System Map</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☄️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+<div id="sun-halo" aria-hidden="true"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<!-- ======================= Loading overlay ======================= -->
+<div id="loader">
+  <div class="loader-orbits" aria-hidden="true">
+    <span class="lo lo1"></span><span class="lo lo2"></span><span class="lo lo3"></span>
+    <span class="lo-sun"></span>
+  </div>
+  <h1 class="loader-title">Asteroid&nbsp;Atlas</h1>
+  <p class="loader-sub">contacting NASA/JPL Small-Body Database…</p>
+  <div class="loader-bar"><div id="loader-fill"></div></div>
+  <p id="loader-status">initializing</p>
+  <div id="loader-error" hidden>
+    <p id="loader-error-msg">Could not reach the NASA/JPL API.</p>
+    <button id="retry-btn" class="btn-accent">Retry</button>
+  </div>
+</div>
+
+<!-- ======================= Header ======================= -->
+<header id="hud-top">
+  <div class="brand">
+    <h1>Asteroid <em>Atlas</em></h1>
+    <p class="tagline">live orbital data · NASA/JPL Small-Body Database</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><span id="stat-count" class="stat-num">0</span><span class="stat-label">asteroids&nbsp;mapped</span></div>
+    <div class="stat hide-sm"><span class="stat-num dim">1.4M+</span><span class="stat-label">known&nbsp;to&nbsp;date</span></div>
+  </div>
+  <div class="search-wrap">
+    <input id="search" type="search" placeholder="Search — try “Apophis”, “Ceres”, “Bennu”…" autocomplete="off" spellcheck="false">
+    <ul id="search-results" hidden></ul>
+  </div>
+</header>
+
+<!-- ======================= Mobile toggles ======================= -->
+<div id="fab-col">
+  <button id="fab-legend" class="fab" title="Layers & legend" aria-label="Layers and legend">◈</button>
+  <button id="fab-cad" class="fab" title="Close approaches" aria-label="Close approaches">⚠</button>
+  <button id="fab-view" class="fab" title="Top-down view" aria-label="Toggle top-down view">⊙</button>
+</div>
+
+<!-- ======================= Legend / filters ======================= -->
+<aside id="panel-legend" class="panel">
+  <div class="panel-head"><h2>Populations</h2><button class="panel-close" data-close="panel-legend" aria-label="Close">✕</button></div>
+  <ul id="legend-list"></ul>
+  <div class="panel-foot">tap a population to show / hide it</div>
+</aside>
+
+<!-- ======================= Close approaches ======================= -->
+<aside id="panel-cad" class="panel">
+  <div class="panel-head"><h2>Close approaches <span class="sub">next 60 days · &lt; 10 lunar distances</span></h2><button class="panel-close" data-close="panel-cad" aria-label="Close">✕</button></div>
+  <ul id="cad-list"><li class="cad-loading">querying JPL CNEOS…</li></ul>
+</aside>
+
+<!-- ======================= Selected object card ======================= -->
+<aside id="panel-info" class="panel" hidden>
+  <div class="panel-head"><h2 id="info-name">—</h2><button class="panel-close" data-close="panel-info" aria-label="Close">✕</button></div>
+  <p id="info-class" class="info-class">—</p>
+  <dl id="info-grid">
+    <div><dt>semi-major axis</dt><dd id="info-a">—</dd></div>
+    <div><dt>eccentricity</dt><dd id="info-e">—</dd></div>
+    <div><dt>inclination</dt><dd id="info-i">—</dd></div>
+    <div><dt>orbital period</dt><dd id="info-per">—</dd></div>
+    <div><dt>distance from Sun</dt><dd id="info-r">—</dd></div>
+    <div><dt>est. diameter</dt><dd id="info-d">—</dd></div>
+  </dl>
+</aside>
+
+<!-- ======================= Time controls ======================= -->
+<footer id="hud-bottom">
+  <div class="time-readout">
+    <span id="sim-date">—</span>
+    <button id="btn-now" title="Jump to the present">Now</button>
+  </div>
+  <div class="time-controls">
+    <button id="btn-rev" class="tbtn" title="Reverse time" aria-label="Reverse time">⏴</button>
+    <button id="btn-play" class="tbtn tbtn-main" title="Play / pause" aria-label="Play or pause">❚❚</button>
+    <div class="speed-chips" id="speed-chips">
+      <button data-dps="1">1 d/s</button>
+      <button data-dps="7">1 wk/s</button>
+      <button data-dps="30" class="on">1 mo/s</button>
+      <button data-dps="182">6 mo/s</button>
+      <button data-dps="1826">5 yr/s</button>
+    </div>
+  </div>
+  <div class="credit hide-sm">data: <a href="https://ssd-api.jpl.nasa.gov/" target="_blank" rel="noopener">JPL SSD/CNEOS APIs</a></div>
+</footer>
+
+<div id="hint">drag to orbit · scroll / pinch to zoom · tap an asteroid</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
