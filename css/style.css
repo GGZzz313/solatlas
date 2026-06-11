@@ -633,7 +633,7 @@ html, body {
   transform-origin: center;
   animation: bm-spin 21s linear infinite;
 }
-.brand-mark .bm-o2 { animation-duration: 12s; animation-direction: reverse; }
+.brand-mark .bm-o2 { animation-duration: 12s; }
 .brand-mark .bm-o3 { animation-duration: 7s; }
 @keyframes bm-spin { to { transform: rotate(360deg); } }
 
