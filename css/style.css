@@ -334,10 +334,6 @@ html, body {
   to { opacity: 0.8; transform: scaleX(1); }
 }
 @keyframes flare-pulse { 50% { opacity: 0.45; } }
-@keyframes title-shine {
-  0% { background-position: 110% 0; }
-  45%, 100% { background-position: -60% 0; }
-}
 .loader-sub {
   color: #aab8d8;
   font-size: clamp(13px, 1.8vw, 16px);
@@ -631,26 +627,30 @@ html, body {
 
 .brand { display: flex; align-items: center; gap: 13px; }
 .brand-mark { width: 47px; height: 47px; flex: none; filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.45)); }
-.brand-mark .bm-comet { animation: comet-twinkle 2.6s ease-in-out infinite; }
-@keyframes comet-twinkle { 50% { opacity: 0.35; } }
+/* planet dots circle the mini orrery, echoing the title screen */
+.brand-mark .bm-o1, .brand-mark .bm-o2, .brand-mark .bm-o3 {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: bm-spin 21s linear infinite;
+}
+.brand-mark .bm-o2 { animation-duration: 12s; animation-direction: reverse; }
+.brand-mark .bm-o3 { animation-duration: 7s; }
+@keyframes bm-spin { to { transform: rotate(360deg); } }
 
 .brand h1 {
-  font-size: clamp(21px, 2.9vw, 30px);
+  font-size: clamp(16px, 2.2vw, 23px);
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   line-height: 1;
+  white-space: nowrap;
   color: #f1f6ff;
-  text-shadow: 0 0 22px rgba(140, 200, 255, 0.35);
+  text-shadow:
+    0 0 1px #fff,
+    0 0 14px rgba(190, 226, 255, 0.5),
+    0 0 36px rgba(125, 211, 252, 0.35);
 }
-.brand h1 em {
-  font-style: normal;
-  background: linear-gradient(110deg, var(--accent) 0%, #fff 50%, var(--accent2) 100%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: title-shine 2.6s ease-out 0.6s 1 backwards;
-}
+.brand h1 em { font-style: normal; }
 .tagline {
   display: flex;
   align-items: center;
@@ -940,7 +940,8 @@ html, body {
   .lo, .lo-sun, .pl-label.sel-marker::after,
   .loader-stars, .loader-glow, .loader-core > *, .loader-title,
   .loader-title > span, .lt-flare,
-  #loader-status::after, .brand h1 em, .brand-mark .bm-comet, .live-dot,
+  #loader-status::after, .live-dot,
+  .brand-mark .bm-o1, .brand-mark .bm-o2, .brand-mark .bm-o3,
   #loader .loader-begin { animation: none; }
   .shoot { display: none; }
 }
