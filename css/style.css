@@ -270,7 +270,7 @@ html, body {
 #info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 #info-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
 #info-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
-#info-grid[hidden], #info-craft[hidden] { display: none; }
+#info-grid[hidden] { display: none; }
 #panel-info { max-height: min(74vh, 640px); overflow-y: auto; scrollbar-width: thin; }
 
 /* ---- object preview ---- */
@@ -312,8 +312,6 @@ html, body {
 .badge-pha { color: #fbbf77; background: rgba(251, 146, 60, 0.12); }
 .badge-sentry { color: #fb7185; background: rgba(244, 63, 94, 0.14); }
 
-.badge-craft { color: #bcd6ff; background: rgba(125, 170, 255, 0.14); }
-
 .info-link {
   display: inline-block;
   margin-top: 12px;
@@ -325,17 +323,10 @@ html, body {
 .info-link:hover { text-decoration: underline; }
 .info-link[hidden] { display: none; }
 
-/* ---- spacecraft info ---- */
-.craft-note { font-size: 12.5px; line-height: 1.5; color: var(--ink); margin-bottom: 12px; }
-.craft-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
-.craft-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
-.craft-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
-.craft-src { margin-top: 10px; font-size: 10px; color: var(--ink-dim); font-family: var(--mono); }
-
-/* dwarf & spacecraft floating labels */
+/* dwarf-planet & moon floating labels */
 .dwarf-label { color: rgba(196, 181, 253, 0.92); }
-.craft-label {
-  color: rgba(188, 214, 255, 0.95);
+.moon-label {
+  color: rgba(199, 210, 232, 0.95);
   text-transform: none;
   letter-spacing: 0.02em;
   font-family: var(--mono);

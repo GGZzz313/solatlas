@@ -171,16 +171,41 @@ const CLASS_NAMES = {
   COM: "Periodic comet", ISO: "Interstellar object",
 };
 
-// Spacecraft blurbs for the info card, keyed by name (matched from Horizons).
-const SPACECRAFT_INFO = {
-  "Voyager 1": { op: "NASA/JPL", launch: 1977, note: "Farthest human-made object; in interstellar space since 2012." },
-  "Voyager 2": { op: "NASA/JPL", launch: 1977, note: "Only probe to visit all four giant planets; in interstellar space since 2018." },
-  "Pioneer 10": { op: "NASA/Ames", launch: 1972, note: "First probe through the asteroid belt and past Jupiter. Last contact 2003." },
-  "Pioneer 11": { op: "NASA/Ames", launch: 1973, note: "First flyby of Saturn. Last contact 1995." },
-  "New Horizons": { op: "NASA/JHUAPL", launch: 2006, note: "Flew past Pluto (2015) and Arrokoth (2019); now exploring the Kuiper Belt." },
-  "Parker Solar Probe": { op: "NASA/JHUAPL", launch: 2018, note: "Diving through the Sun's corona — the fastest object ever built." },
-  "Lucy": { op: "NASA/SwRI", launch: 2021, note: "Touring the Jupiter Trojan asteroids through the 2030s." },
-  "Psyche": { op: "NASA/JPL", launch: 2023, note: "En route to the metal asteroid 16 Psyche, arriving 2029." },
+// Planet facts for the info card (diameter km, sidereal rotation hours —
+// negative = retrograde). Moon counts come from the loaded moons.json.
+const PLANET_FACTS = [
+  { d: 4879, rot: 1407.6 },    // Mercury
+  { d: 12104, rot: -5832.5 },  // Venus
+  { d: 12742, rot: 23.93 },    // Earth
+  { d: 6779, rot: 24.62 },     // Mars
+  { d: 139820, rot: 9.93 },    // Jupiter
+  { d: 116460, rot: 10.66 },   // Saturn
+  { d: 50724, rot: -17.24 },   // Uranus
+  { d: 49244, rot: 16.11 },    // Neptune
+];
+// planet / moon name → [img/bodies file, credit]
+const PLANET_IMG = [
+  ["mercury.jpg", "NASA/JHUAPL · MESSENGER"], ["venus.jpg", "NASA/JPL · Mariner 10"],
+  ["earth.jpg", "NASA · Apollo 17"], ["mars.png", "ESA · Rosetta/OSIRIS"],
+  ["jupiter.png", "NASA/ESA · Hubble"], ["saturn.jpg", "NASA/JPL/SSI · Cassini"],
+  ["uranus.png", "NASA/JPL · Voyager 2"], ["neptune.png", "NASA/JPL · Voyager 2"],
+];
+const MOON_IMG = {
+  moon: ["luna.jpg", "NASA/GSFC · LRO"],
+  phobos: ["phobos.jpg", "NASA/JPL/UA · MRO"], deimos: ["deimos.jpg", "NASA/JPL/UA · MRO"],
+  io: ["io.jpg", "NASA/JPL · Galileo"], europa: ["europa-moon.png", "NASA/JPL · Galileo"],
+  ganymede: ["ganymede.png", "NASA/JPL · Juno"], callisto: ["callisto.png", "NASA/JPL · Galileo"],
+  amalthea: ["amalthea.png", "NASA/JPL · Galileo"],
+  mimas: ["mimas.jpg", "NASA/JPL/SSI · Cassini"], enceladus: ["enceladus.jpg", "NASA/JPL/SSI · Cassini"],
+  tethys: ["tethys.png", "NASA/JPL/SSI · Cassini"], dione: ["dione.jpg", "NASA/JPL/SSI · Cassini"],
+  rhea: ["rhea.jpg", "NASA/JPL/SSI · Cassini"], titan: ["titan.jpg", "NASA/JPL/SSI · Cassini"],
+  hyperion: ["hyperion.jpg", "NASA/JPL/SSI · Cassini"], iapetus: ["iapetus.jpg", "NASA/JPL/SSI · Cassini"],
+  phoebe: ["phoebe-moon.jpg", "NASA/JPL/SSI · Cassini"],
+  miranda: ["miranda.png", "NASA/JPL · Voyager 2"], ariel: ["ariel.jpg", "NASA/JPL · Voyager 2"],
+  umbriel: ["umbriel.jpg", "NASA/JPL · Voyager 2"], titania: ["titania.png", "NASA/JPL · Voyager 2"],
+  oberon: ["oberon.jpg", "NASA/JPL · Voyager 2"],
+  triton: ["triton.jpg", "NASA/JPL · Voyager 2"], proteus: ["proteus.jpg", "NASA/JPL · Voyager 2"],
+  charon: ["charon.png", "NASA/JHUAPL/SwRI · New Horizons"],
 };
 
 // IAU dwarf planets + leading candidates. SBDB often lacks their diameter,
@@ -254,13 +279,19 @@ const state = {
   playing: true,
   dps: 30,                 // simulated days per real second
   dir: 1,
-  cam: { yaw: -1.1, pitch: 0.55, dist: 7.8, tYaw: -1.1, tPitch: 0.55, tDist: 7.8 },
+  cam: {
+    yaw: -1.1, pitch: 0.55, dist: 7.8, tYaw: -1.1, tPitch: 0.55, tDist: 7.8,
+    target: new Float64Array(3),   // current look-at point
+    fFrom: new Float64Array(3),    // look-at when focus last changed
+    fBlend: 1,                     // 0→1 transition into the new focus
+  },
   topDown: false,
   savedPitch: 0.55,
   selected: null,          // { group, index }
-  selCraft: null,          // selected spacecraft index
+  selPlanet: null,         // selected planet index
+  selMoon: null,           // selected moon index
+  focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
   showPHA: false,          // highlight potentially-hazardous asteroids
-  showCraft: true,         // show spacecraft + trajectories
   totalLoaded: 0,
   shownCount: 0,
   needFullUpdate: true,
@@ -283,7 +314,19 @@ const groups = GROUPS.map((g) => ({
 
 const seen = new Set();          // pdes dedupe across queries
 const phaList = [];              // { gi, k } for potentially-hazardous asteroids
-const spacecraft = [];           // { name, pts:Float64Array[jd,x,y,z]*N, pos, trajBuf, ... }
+
+// Planetary moons (loaded from data/moons.json, propagated around parents).
+const moons = {
+  count: 0, visible: true,
+  el: new Float32Array(0),       // same STRIDE layout as asteroid groups
+  parentIdx: [],                 // planetState index, or -1 (small-body parent)
+  parentSmall: [],               // [gi,k] for small-body parents (Pluto), else null
+  pos: new Float32Array(0),
+  sizes: new Float32Array(0),
+  meta: [],                      // { name, parentName, a, e, i, n, radius, img }
+  posBuf: null, sizeBuf: null, dirty: true,
+};
+let plutoRef = null;             // [gi,k] of Pluto in the asteroid groups
 
 /* ============================================================
    4. WebGL renderer
@@ -386,9 +429,8 @@ function mat4Perspective(out, fovY, aspect, near, far) {
   out[14] = (2 * far * near) / (near - far);
   return out;
 }
-function mat4LookAt(out, eye, up) {
-  // target is always the origin
-  let zx = eye[0], zy = eye[1], zz = eye[2];
+function mat4LookAt(out, eye, target, up) {
+  let zx = eye[0] - target[0], zy = eye[1] - target[1], zz = eye[2] - target[2];
   let l = Math.hypot(zx, zy, zz); zx /= l; zy /= l; zz /= l;
   let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
   l = Math.hypot(xx, xy, xz) || 1; xx /= l; xy /= l; xz /= l;
@@ -545,6 +587,28 @@ function buildSelectedOrbit(rec) {
   selOrbitCount = SEG;
 }
 
+/* selected moon's orbit, rebuilt as its parent planet moves */
+let moonOrbitBuf = gl.createBuffer();
+let moonOrbitCount = 0;
+const _moVerts = new Float32Array(128 * 3);
+function buildMoonOrbit(m) {
+  if (!moonParentPos(m, _mpp)) { moonOrbitCount = 0; return; }
+  const o = m * STRIDE, el = moons.el;
+  const a = el[o], e = el[o + 1], b = el[o + 2];
+  const SEG = 128;
+  for (let s = 0; s < SEG; s++) {
+    const E = (s / SEG) * TWO_PI;
+    const xp = a * (Math.cos(E) - e);
+    const yp = b * Math.sin(E);
+    _moVerts[s * 3] = _mpp[0] + xp * el[o + 6] + yp * el[o + 9];
+    _moVerts[s * 3 + 1] = _mpp[1] + xp * el[o + 7] + yp * el[o + 10];
+    _moVerts[s * 3 + 2] = _mpp[2] + xp * el[o + 8] + yp * el[o + 11];
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, moonOrbitBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, _moVerts, gl.DYNAMIC_DRAW);
+  moonOrbitCount = SEG;
+}
+
 /* ---- draw helpers ---- */
 function bindPointAttrs(posBuf, sizeBuf, phaseBuf, singlePhase) {
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
@@ -611,6 +675,63 @@ function updateHyperbolic(g, from, to, t) {
   }
 }
 
+/* World position of the camera's focus body (Sun when unfocused). */
+const _sunOrigin = new Float64Array(3);
+const _focusScratch = new Float64Array(3);
+function focusPosition() {
+  const f = state.focus;
+  if (!f) return _sunOrigin;
+  if (f.planet != null) return planetState[f.planet].pos;
+  const [gi, k] = f.small;
+  const p = groups[gi].pos;
+  _focusScratch[0] = p[k * 3]; _focusScratch[1] = p[k * 3 + 1]; _focusScratch[2] = p[k * 3 + 2];
+  return _focusScratch;
+}
+
+/* Moon position of moon m's parent body, written into out. */
+function moonParentPos(m, out) {
+  const pi = moons.parentIdx[m];
+  if (pi >= 0) {
+    const p = planetState[pi].pos;
+    out[0] = p[0]; out[1] = p[1]; out[2] = p[2];
+    return true;
+  }
+  const ref = moons.parentSmall[m];
+  if (!ref) return false;
+  const p = groups[ref[0]].pos;
+  out[0] = p[ref[1] * 3]; out[1] = p[ref[1] * 3 + 1]; out[2] = p[ref[1] * 3 + 2];
+  return true;
+}
+
+/* Kepler around the parent planet, then offset by the parent's position. */
+const _mpp = new Float64Array(3);
+function updateMoonPositions(jd) {
+  if (!moons.count) return;
+  const el = moons.el, pos = moons.pos;
+  const t = jd - J2000;
+  for (let k = 0; k < moons.count; k++) {
+    if (!moonParentPos(k, _mpp)) { pos[k * 3] = 1e9; continue; }
+    const o = k * STRIDE;
+    const a = el[o], e = el[o + 1], b = el[o + 2];
+    let M = el[o + 3] + el[o + 4] * (t - el[o + 5]);
+    M = M % TWO_PI;
+    if (M > Math.PI) M -= TWO_PI; else if (M < -Math.PI) M += TWO_PI;
+    let E = e < 0.8 ? M : Math.PI * (M < 0 ? -1 : 1);
+    for (let j = 0; j < 10; j++) {
+      const s = Math.sin(E), cE = Math.cos(E);
+      const d = (E - e * s - M) / (1 - e * cE);
+      E -= d;
+      if (d < 1e-8 && d > -1e-8) break;
+    }
+    const xp = a * (Math.cos(E) - e);
+    const yp = b * Math.sin(E);
+    pos[k * 3] = _mpp[0] + xp * el[o + 6] + yp * el[o + 9];
+    pos[k * 3 + 1] = _mpp[1] + xp * el[o + 7] + yp * el[o + 10];
+    pos[k * 3 + 2] = _mpp[2] + xp * el[o + 8] + yp * el[o + 11];
+  }
+  moons.dirty = true;
+}
+
 function propagate() {
   const t = state.simJD - J2000;
   const t0 = performance.now();
@@ -650,20 +771,8 @@ function render(now) {
   // time machine
   if (state.playing) state.simJD += state.dir * state.dps * dt;
 
-  // camera easing
-  const c = state.cam;
-  const ease = 1 - Math.exp(-dt * 9);
-  c.yaw += (c.tYaw - c.yaw) * ease;
-  c.pitch += (c.tPitch - c.pitch) * ease;
-  c.dist += (c.tDist - c.dist) * ease;
-
-  eye[0] = c.dist * Math.cos(c.pitch) * Math.cos(c.yaw);
-  eye[1] = c.dist * Math.cos(c.pitch) * Math.sin(c.yaw);
-  eye[2] = c.dist * Math.sin(c.pitch);
-  mat4LookAt(view, eye, [0, 0, 1]);
-  mat4Mul(vp, proj, view);
-
-  // propagate asteroid + planet positions when time moved
+  // propagate asteroid + planet + moon positions when time moved — BEFORE the
+  // camera reads focusPosition(), or a focused planet is aimed at one frame late
   if (state.simJD !== simAtLastPropagate || state.needFullUpdate) {
     propagate();
     simAtLastPropagate = state.simJD;
@@ -674,14 +783,32 @@ function render(now) {
       gl.bindBuffer(gl.ARRAY_BUFFER, ps.posBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tmp), gl.DYNAMIC_DRAW);
     }
-    if (state.showCraft) {
-      for (const c of spacecraft) {
-        craftPositionAt(c, state.simJD);
-        gl.bindBuffer(gl.ARRAY_BUFFER, c.posBuf);
-        gl.bufferData(gl.ARRAY_BUFFER, c.pos, gl.DYNAMIC_DRAW);
-      }
-    }
+    updateMoonPositions(state.simJD);
+    if (state.selMoon != null) buildMoonOrbit(state.selMoon);
   }
+
+  // camera easing (orientation, distance, and focus target)
+  const c = state.cam;
+  const ease = 1 - Math.exp(-dt * 9);
+  c.yaw += (c.tYaw - c.yaw) * ease;
+  c.pitch += (c.tPitch - c.pitch) * ease;
+  c.dist += (c.tDist - c.dist) * ease;
+  // blend into the focus body once, then track it rigidly — easing the target
+  // per-frame would trail a moving planet by more than a zoomed-in view width
+  const fp = focusPosition();
+  c.fBlend = Math.min(1, c.fBlend + dt * 2.2);
+  const bl = c.fBlend * c.fBlend * (3 - 2 * c.fBlend);
+  c.target[0] = c.fFrom[0] + (fp[0] - c.fFrom[0]) * bl;
+  c.target[1] = c.fFrom[1] + (fp[1] - c.fFrom[1]) * bl;
+  c.target[2] = c.fFrom[2] + (fp[2] - c.fFrom[2]) * bl;
+
+  eye[0] = c.target[0] + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw);
+  eye[1] = c.target[1] + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw);
+  eye[2] = c.target[2] + c.dist * Math.sin(c.pitch);
+  // near plane follows zoom so a focused moon system isn't clipped away
+  mat4Perspective(proj, FOV, canvas.width / canvas.height, Math.min(0.01, c.dist * 0.2), 4000);
+  mat4LookAt(view, eye, c.target, [0, 0, 1]);
+  mat4Mul(vp, proj, view);
 
   gl.clear(gl.COLOR_BUFFER_BIT);
   const pixScale = canvas.height / (2 * Math.tan(FOV / 2));
@@ -706,17 +833,13 @@ function render(now) {
     gl.uniform1f(LN.uAlpha, 0.55);
     gl.drawArrays(selOrbitStrip ? gl.LINE_STRIP : gl.LINE_LOOP, 0, selOrbitCount);
   }
-  // spacecraft trajectories
-  if (state.showCraft) {
-    for (let i = 0; i < spacecraft.length; i++) {
-      const c = spacecraft[i];
-      gl.bindBuffer(gl.ARRAY_BUFFER, c.trajBuf);
-      gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
-      const sel = state.selCraft === i;
-      gl.uniform3f(LN.uColor, 0.72, 0.86, 1.0);
-      gl.uniform1f(LN.uAlpha, sel ? 0.65 : 0.2);
-      gl.drawArrays(gl.LINE_STRIP, 0, c.n);
-    }
+  // selected moon's orbit around its parent
+  if (state.selMoon != null && moonOrbitCount) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, moonOrbitBuf);
+    gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3f(LN.uColor, 0.75, 0.82, 0.95);
+    gl.uniform1f(LN.uAlpha, 0.5);
+    gl.drawArrays(gl.LINE_LOOP, 0, moonOrbitCount);
   }
 
   /* ---- points ---- */
@@ -778,6 +901,21 @@ function render(now) {
     gl.drawArrays(gl.POINTS, 0, phaList.length);
   }
 
+  // moons
+  if (moons.count && moons.visible) {
+    if (moons.dirty) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, moons.posBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, moons.pos, gl.DYNAMIC_DRAW);
+      moons.dirty = false;
+    }
+    gl.uniform1f(PT.uMinPx, 1.4 * dpr);
+    gl.uniform1f(PT.uMaxPx, 10 * dpr);
+    gl.uniform3f(PT.uColor, 0.78, 0.84, 0.94);
+    gl.uniform1f(PT.uAlpha, 0.95);
+    bindPointAttrs(moons.posBuf, moons.sizeBuf, null, 0);
+    gl.drawArrays(gl.POINTS, 0, moons.count);
+  }
+
   // planets
   gl.uniform1f(PT.uMinPx, 2.5 * dpr);
   gl.uniform1f(PT.uMaxPx, 26 * dpr);
@@ -796,19 +934,6 @@ function render(now) {
   bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
   gl.drawArrays(gl.POINTS, 0, 1);
 
-  // spacecraft markers
-  if (state.showCraft) {
-    gl.uniform1f(PT.uMinPx, 3.5 * dpr);
-    gl.uniform1f(PT.uMaxPx, 11 * dpr);
-    gl.uniform3f(PT.uColor, 0.9, 0.97, 1.0);
-    gl.uniform1f(PT.uAlpha, 1.0);
-    for (const c of spacecraft) {
-      if (!c.inRange) continue;
-      bindPointAttrs(c.posBuf, c.sizeBuf, null, 0);
-      gl.drawArrays(gl.POINTS, 0, 1);
-    }
-  }
-
   updateOverlays(pixScale);
   updateHUD();
   requestAnimationFrame(render);
@@ -820,7 +945,7 @@ function project(x, y, z) {
   _pv[0] = vp[0] * x + vp[4] * y + vp[8] * z + vp[12];
   _pv[1] = vp[1] * x + vp[5] * y + vp[9] * z + vp[13];
   _pv[3] = vp[3] * x + vp[7] * y + vp[11] * z + vp[15];
-  if (_pv[3] <= 0.001) return null;
+  if (_pv[3] <= 1e-6) return null;
   return [
     (_pv[0] / _pv[3] * 0.5 + 0.5) * cssW,
     (1 - (_pv[1] / _pv[3] * 0.5 + 0.5)) * cssH,
@@ -831,12 +956,16 @@ function project(x, y, z) {
 /* ---- HTML overlays: sun halo, planet labels, selection marker ---- */
 let selMarkerEl = null;
 const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
+const moonLabelList = []; // { k, name, el } for major moons (radius ≥ 200 km)
 function buildDwarfList() {
   dwarfList.length = 0;
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     for (let k = 0; k < g.count; k++) {
-      if (g.meta[k].dwarf) dwarfList.push({ gi, k, name: g.meta[k].dwarf, el: null });
+      if (g.meta[k].dwarf) {
+        dwarfList.push({ gi, k, name: g.meta[k].dwarf, el: null });
+        if (g.meta[k].dwarf === "Pluto") plutoRef = [gi, k];
+      }
     }
   }
 }
@@ -889,37 +1018,43 @@ function updateOverlays(pixScale) {
     d.el.style.opacity = show ? "0.85" : "0";
     if (show) d.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
-  // spacecraft labels (always-on when in range)
-  for (const c of spacecraft) {
-    if (!c.labelEl) {
-      c.labelEl = document.createElement("div");
-      c.labelEl.className = "pl-label craft-label";
-      c.labelEl.textContent = c.name;
-      labelsEl.appendChild(c.labelEl);
+  // major-moon labels — only when the moon is visually separated from its parent
+  for (const ml of moonLabelList) {
+    if (!ml.el) {
+      ml.el = document.createElement("div");
+      ml.el.className = "pl-label moon-label";
+      ml.el.textContent = ml.name;
+      labelsEl.appendChild(ml.el);
     }
-    if (!state.showCraft || !c.inRange) { c.labelEl.style.opacity = "0"; continue; }
-    const p = project(c.pos[0], c.pos[1], c.pos[2]);
-    const show = p && p[0] > -60 && p[0] < cssW + 60 && p[1] > -20 && p[1] < cssH + 20;
-    c.labelEl.style.opacity = show ? "0.92" : "0";
-    if (show) c.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+    if (!moons.visible) { ml.el.style.opacity = "0"; continue; }
+    const k = ml.k;
+    const p = project(moons.pos[k * 3], moons.pos[k * 3 + 1], moons.pos[k * 3 + 2]);
+    if (!p) { ml.el.style.opacity = "0"; continue; }
+    let sep = 1e9;
+    if (moonParentPos(k, _mpp)) {
+      const pp = project(_mpp[0], _mpp[1], _mpp[2]);
+      if (pp) sep = Math.hypot(p[0] - pp[0], p[1] - pp[1]);
+    }
+    const show = sep > 30 && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
+    ml.el.style.opacity = show ? "0.85" : "0";
+    if (show) ml.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
-  // selection marker (asteroid or spacecraft) + live distance readout
+  // selection marker (asteroid, planet, or moon) + live distance readout
   let selPos = null, selName = "";
   if (state.selected) {
     const g = groups[state.selected.group], k = state.selected.index;
     selPos = [g.pos[k * 3], g.pos[k * 3 + 1], g.pos[k * 3 + 2]];
     selName = g.meta[k].name;
-    $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
-  } else if (state.selCraft != null) {
-    const c = spacecraft[state.selCraft];
-    if (c && c.inRange) {
-      selPos = [c.pos[0], c.pos[1], c.pos[2]];
-      selName = c.name;
-      $("craft-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(2) + " au";
-    } else {
-      $("craft-r").textContent = "outside data range";
-    }
+  } else if (state.selPlanet != null) {
+    const ps = planetState[state.selPlanet];
+    selPos = [ps.pos[0], ps.pos[1], ps.pos[2]];
+    selName = ps.def.name;
+  } else if (state.selMoon != null) {
+    const k = state.selMoon;
+    selPos = [moons.pos[k * 3], moons.pos[k * 3 + 1], moons.pos[k * 3 + 2]];
+    selName = moons.meta[k].name;
   }
+  if (selPos) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
   if (selPos) {
     if (!selMarkerEl) {
       selMarkerEl = document.createElement("div");
@@ -1175,46 +1310,49 @@ function ingestInterstellar(resp) {
   return rows.length;
 }
 
-// Spacecraft trajectories from Horizons → flat [jd,x,y,z] arrays for interp.
-function ingestSpacecraft(list) {
-  spacecraft.length = 0;
-  if (!Array.isArray(list)) return 0;
-  for (const c of list) {
-    if (!c || !Array.isArray(c.pts || c.points)) continue;
-    const raw = c.points || c.pts;
-    const n = raw.length;
-    if (!n) continue;
-    const jd = new Float64Array(n);
-    const verts = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      jd[i] = raw[i][0];
-      verts[i * 3] = raw[i][1]; verts[i * 3 + 1] = raw[i][2]; verts[i * 3 + 2] = raw[i][3];
-    }
-    spacecraft.push({
-      name: c.name, jd, verts, n,
-      pos: new Float32Array(3),
-      inRange: false,
-      trajBuf: makeBuffer(verts),
-      posBuf: makeBuffer(new Float32Array(3), gl.DYNAMIC_DRAW),
-      sizeBuf: makeBuffer(new Float32Array([0.09])),
-      labelEl: null,
+// Planetary moons from data/moons.json: Keplerian elements relative to the
+// parent planet (ecliptic J2000, from Horizons), packed into the same STRIDE
+// layout the asteroid propagator uses. Parent digit 3..8 → planetState index;
+// 9 (Pluto) resolves to its entry in the asteroid groups.
+const PARENT_NAMES = { 3: "Earth", 4: "Mars", 5: "Jupiter", 6: "Saturn", 7: "Uranus", 8: "Neptune", 9: "Pluto" };
+function buildMoons(data) {
+  if (!data || !Array.isArray(data.moons) || !data.moons.length) return 0;
+  const list = data.moons;
+  const n = list.length;
+  moons.el = new Float32Array(n * STRIDE);
+  moons.pos = new Float32Array(n * 3);
+  moons.sizes = new Float32Array(n);
+  moons.parentIdx = new Int16Array(n);
+  moons.parentSmall = new Array(n).fill(null);
+  moons.meta = [];
+  const Pb = new Float64Array(6);
+  list.forEach((r, k) => {
+    const o = k * STRIDE;
+    perifocalBasis(r.w * DEG, r.om * DEG, r.i * DEG, Pb);
+    moons.el[o] = r.a;
+    moons.el[o + 1] = r.e;
+    moons.el[o + 2] = r.a * Math.sqrt(1 - r.e * r.e);
+    moons.el[o + 3] = r.ma * DEG;
+    moons.el[o + 4] = r.n * DEG;            // Horizons n is deg/day
+    moons.el[o + 5] = r.epoch - J2000;
+    moons.el[o + 6] = Pb[0]; moons.el[o + 7] = Pb[1]; moons.el[o + 8] = Pb[2];
+    moons.el[o + 9] = Pb[3]; moons.el[o + 10] = Pb[4]; moons.el[o + 11] = Pb[5];
+    moons.parentIdx[k] = r.parent >= 3 && r.parent <= 8 ? r.parent - 1 : -1;
+    if (r.parent === 9 && plutoRef) moons.parentSmall[k] = plutoRef;
+    moons.sizes[k] = 0.0015 + Math.min((r.radius || 8) / 2700, 1) * 0.02;
+    const img = MOON_IMG[r.name.toLowerCase()] || null;
+    moons.meta.push({
+      name: r.name, parentName: PARENT_NAMES[r.parent] || "?",
+      a: r.a, e: r.e, i: r.i, n: r.n, radius: r.radius, img,
     });
-  }
-  return spacecraft.length;
-}
-
-// Linear-interpolate a craft's heliocentric position at sim JD.
-function craftPositionAt(c, jd) {
-  if (jd < c.jd[0] || jd > c.jd[c.n - 1]) { c.inRange = false; return; }
-  c.inRange = true;
-  let lo = 0, hi = c.n - 1;
-  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= jd) lo = mid; else hi = mid; }
-  const t0 = c.jd[lo], t1 = c.jd[hi];
-  const f = t1 > t0 ? (jd - t0) / (t1 - t0) : 0;
-  for (let d = 0; d < 3; d++) {
-    const a = c.verts[lo * 3 + d], b = c.verts[hi * 3 + d];
-    c.pos[d] = a + (b - a) * f;
-  }
+    if (r.radius >= 200) moonLabelList.push({ k, name: r.name, el: null });
+  });
+  moons.count = n;
+  if (!moons.posBuf) moons.posBuf = gl.createBuffer();
+  if (moons.sizeBuf) gl.deleteBuffer(moons.sizeBuf);
+  moons.sizeBuf = makeBuffer(moons.sizes);
+  moons.dirty = true;
+  return n;
 }
 
 let loadedOnce = false;
@@ -1225,7 +1363,10 @@ async function loadAsteroids() {
   status.textContent = "downloading NASA/JPL data snapshot…";
   fill.style.width = "15%";
   try {
-    const snap = await fetchJSON(DATA_URL);
+    const [snap, moonData] = await Promise.all([
+      fetchJSON(DATA_URL),
+      fetchJSON("data/moons.json").catch(() => null),   // moons are optional
+    ]);
     fill.style.width = "60%";
     status.textContent = "propagating orbits…";
     buildSentryMap(snap.sentry);           // before ingest so objects get flagged
@@ -1236,7 +1377,7 @@ async function loadAsteroids() {
     if (!added) throw new Error("snapshot contained no usable records");
     buildDwarfList();
     buildPhaList();
-    ingestSpacecraft(snap.spacecraft);
+    buildMoons(moonData);
     renderLegend();
     fill.style.width = "100%";
     const total = +snap.totalKnown;
@@ -1377,9 +1518,9 @@ function renderLegend() {
     { key: "pha", icon: "⚠", label: "Highlight PHAs", count: phaList.length, css: "#ff7e2a",
       get on() { return state.showPHA; },
       toggle() { state.showPHA = !state.showPHA; } },
-    { key: "craft", icon: "🛰", label: "Spacecraft", count: spacecraft.length, css: "#bcd6ff",
-      get on() { return state.showCraft; },
-      toggle() { state.showCraft = !state.showCraft; if (!state.showCraft && state.selCraft != null) clearSelection(); } },
+    { key: "moons", icon: "◐", label: "Moons", count: moons.count, css: "#c7d2e8",
+      get on() { return moons.visible; },
+      toggle() { moons.visible = !moons.visible; if (!moons.visible && state.selMoon != null) clearSelection(); } },
   ];
   for (const o of overlays) {
     if (!o.count) continue;
@@ -1408,10 +1549,10 @@ function selectObject(gi, k) {
   const g = groups[gi];
   const m = g.meta[k];
   state.selected = { group: gi, index: k };
-  state.selCraft = null;
-  $("info-craft").hidden = true;
-  $("info-grid").hidden = false;
-  $("info-preview").hidden = false;
+  state.selPlanet = null;
+  state.selMoon = null;
+  // selecting a small body with its own moons (Pluto) focuses the camera on it
+  if (plutoRef && gi === plutoRef[0] && k === plutoRef[1]) focusOn({ small: plutoRef });
   const o = k * STRIDE, el = g.el;
   buildSelectedOrbit({
     a: el[o], e: el[o + 1], b: el[o + 2],
@@ -1469,51 +1610,120 @@ function selectObject(gi, k) {
   renderPreview(m);
   $("panel-info").hidden = false;
 }
-function selectCraft(i) {
-  const c = spacecraft[i];
-  if (!c) return;
-  state.selCraft = i;
-  state.selected = null;
-  selOrbitCount = 0;
-  stopPreview();
-  const info = SPACECRAFT_INFO[c.name] || {};
-  $("info-name").textContent = c.name;
-  $("info-class").textContent = "Robotic spacecraft" + (info.op ? " · " + info.op : "");
-  $("info-badges").innerHTML = `<span class="badge badge-craft">🛰 Spacecraft</span>`;
-  $("info-preview").hidden = true;
-  $("info-grid").hidden = true;
-  $("info-link").hidden = true;
-  $("info-craft").hidden = false;
-  $("craft-note").textContent = info.note || "";
-  $("craft-launch").textContent = info.launch || "—";
-  // current speed from the bracketing trajectory segment (1 au/day = 1731.46 km/s)
-  let v = "—";
-  craftPositionAt(c, state.simJD);
-  if (c.inRange && c.n > 1) {
-    let lo = 0, hi = c.n - 1;
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= state.simJD) lo = mid; else hi = mid; }
-    const dt = c.jd[hi] - c.jd[lo];
-    if (dt > 0) {
-      const dx = c.verts[hi * 3] - c.verts[lo * 3];
-      const dy = c.verts[hi * 3 + 1] - c.verts[lo * 3 + 1];
-      const dz = c.verts[hi * 3 + 2] - c.verts[lo * 3 + 2];
-      v = (Math.hypot(dx, dy, dz) / dt * 1731.46).toFixed(1) + " km/s";
-    }
+/* Camera focus: re-target the orbit camera onto a body and pick a zoom that
+   frames its moon system (major moons ≥ 400 km set the scale). */
+function retarget() {
+  state.cam.fFrom.set(state.cam.target);
+  state.cam.fBlend = 0;
+}
+function focusOn(f) {
+  state.focus = f;
+  retarget();
+  let aMax = 0, aAny = 0;
+  for (let k = 0; k < moons.count; k++) {
+    const isChild = f.planet != null
+      ? moons.parentIdx[k] === f.planet
+      : moons.parentSmall[k] && f.small && moons.parentSmall[k][0] === f.small[0] && moons.parentSmall[k][1] === f.small[1];
+    if (!isChild) continue;
+    aAny = Math.max(aAny, moons.meta[k].a);
+    if (moons.meta[k].radius >= 400) aMax = Math.max(aMax, moons.meta[k].a);
   }
-  $("craft-v").textContent = v;
-  $("craft-r").textContent = c.inRange
-    ? Math.hypot(c.pos[0], c.pos[1], c.pos[2]).toFixed(2) + " au" : "outside data range";
+  const span = aMax || Math.min(aAny, 0.05) || 0.008;
+  state.cam.tDist = clamp(span * 2.6, 2e-4, 0.5);
+}
+function unfocus() {
+  state.focus = null;
+  retarget();
+  state.cam.tDist = Math.max(state.cam.tDist, 2.5);
+}
+
+function selectPlanet(i) {
+  const ps = planetState[i];
+  const facts = PLANET_FACTS[i];
+  state.selPlanet = i;
+  state.selected = null;
+  state.selMoon = null;
+  selOrbitCount = 0;
+  focusOn({ planet: i });
+  let nMoons = 0;
+  for (let k = 0; k < moons.count; k++) if (moons.parentIdx[k] === i) nMoons++;
+  $("info-name").textContent = ps.def.name;
+  $("info-class").textContent = "Planet";
+  const badges = $("info-badges");
+  badges.innerHTML = "";
+  if (nMoons) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-dwarf">● ${nMoons} moon${nMoons > 1 ? "s" : ""} mapped</span>`);
+  const el = planetElements(ps.def, state.simJD, { a: 0, e: 0, i: 0, om: 0, w: 0, M: 0 });
+  $("info-a").textContent = el.a.toFixed(3) + " au";
+  $("info-e").textContent = el.e.toFixed(4);
+  $("info-i").textContent = (el.i / DEG).toFixed(2) + "°";
+  $("info-per").textContent = formatPeriod(Math.pow(el.a, 1.5));
+  $("info-d-label").textContent = "diameter";
+  $("info-d").textContent = facts.d.toLocaleString("en-US") + " km";
+  setRow("info-row-q", "info-q", null);
+  setRow("info-row-albedo", "info-albedo", null);
+  setRow("info-row-rot", "info-rot", formatRotation(facts.rot));
+  setRow("info-row-spec", "info-spec", null);
+  setRow("info-row-moid", "info-moid", null);
+  $("info-link").hidden = true;
+  showPhotoPreview(PLANET_IMG[i][0], PLANET_IMG[i][1]);
   $("panel-info").hidden = false;
 }
+
+function selectMoon(k) {
+  const m = moons.meta[k];
+  state.selMoon = k;
+  state.selected = null;
+  state.selPlanet = null;
+  selOrbitCount = 0;
+  buildMoonOrbit(k);
+  $("info-name").textContent = m.name;
+  $("info-class").textContent = "Moon of " + m.parentName;
+  $("info-badges").innerHTML = "";
+  $("info-a").textContent = Math.round(m.a * 149597870.7).toLocaleString("en-US") + " km";
+  $("info-e").textContent = m.e.toFixed(4);
+  $("info-i").textContent = m.i.toFixed(1) + "°";
+  $("info-per").textContent = formatPeriod(360 / m.n / 365.25);
+  $("info-d-label").textContent = "diameter";
+  $("info-d").textContent = m.radius ? formatKm(m.radius * 2) : "—";
+  setRow("info-row-q", "info-q", null);
+  setRow("info-row-albedo", "info-albedo", null);
+  setRow("info-row-rot", "info-rot", null);
+  setRow("info-row-spec", "info-spec", null);
+  setRow("info-row-moid", "info-moid", null);
+  $("info-link").hidden = true;
+  if (m.img) showPhotoPreview(m.img[0], m.img[1]);
+  else renderPreview({ name: m.name, kind: "a", spec: "", dwarf: true, diam: m.radius ? m.radius * 2 : NaN, albedo: NaN, rot: NaN, img: null });
+  $("panel-info").hidden = false;
+}
+
+/* show a known photo in the preview frame (planets & major moons) */
+function showPhotoPreview(file, credit) {
+  stopPreview();
+  $("preview-img").src = "img/bodies/" + file;
+  $("preview-img").hidden = false;
+  $("preview-canvas").hidden = true;
+  $("preview-cap").textContent = "📷 real image · " + credit;
+  $("preview-cap").classList.add("real");
+}
+function formatRotation(h) {
+  const abs = Math.abs(h);
+  const txt = abs < 48 ? abs.toFixed(2) + " h" : (abs / 24).toFixed(1) + " d";
+  return h < 0 ? txt + " (retrograde)" : txt;
+}
+
 function clearSelection() {
   state.selected = null;
-  state.selCraft = null;
+  state.selPlanet = null;
+  state.selMoon = null;
   selOrbitCount = 0;
+  moonOrbitCount = 0;
   stopPreview();
   $("panel-info").hidden = true;
 }
 function formatPeriod(yr) {
-  return yr < 1.5 ? Math.round(yr * 365.25) + " days" : yr.toFixed(yr < 10 ? 2 : 1) + " yr";
+  const d = yr * 365.25;
+  if (d < 10) return d.toFixed(2) + " days";
+  return yr < 1.5 ? Math.round(d) + " days" : yr.toFixed(yr < 10 ? 2 : 1) + " yr";
 }
 function formatKm(km) {
   return km < 1 ? Math.round(km * 1000) + " m" : km < 10 ? km.toFixed(1) + " km" : Math.round(km) + " km";
@@ -1696,18 +1906,33 @@ function pickAt(x, y) {
       if (d < bestD) { bestD = d; best = [gi, k]; }
     }
   }
-  let bestCraft = -1;
-  if (state.showCraft) {
-    for (let i = 0; i < spacecraft.length; i++) {
-      const c = spacecraft[i];
-      if (!c.inRange) continue;
-      const p = project(c.pos[0], c.pos[1], c.pos[2]);
+  // planets
+  let bestPlanet = -1;
+  for (let i = 0; i < planetState.length; i++) {
+    const ps = planetState[i];
+    const p = project(ps.pos[0], ps.pos[1], ps.pos[2]);
+    if (!p) continue;
+    const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; bestPlanet = i; best = null; }
+  }
+  // moons — only pickable once visually separated from their parent,
+  // so clicking an unzoomed planet never grabs an invisible moon
+  let bestMoon = -1;
+  if (moons.visible) {
+    for (let k = 0; k < moons.count; k++) {
+      const p = project(moons.pos[k * 3], moons.pos[k * 3 + 1], moons.pos[k * 3 + 2]);
       if (!p) continue;
       const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
-      if (d < bestD) { bestD = d; bestCraft = i; best = null; }
+      if (d >= bestD) continue;
+      if (moonParentPos(k, _mpp)) {
+        const pp = project(_mpp[0], _mpp[1], _mpp[2]);
+        if (pp && Math.hypot(p[0] - pp[0], p[1] - pp[1]) < 10) continue;
+      }
+      bestD = d; bestMoon = k; bestPlanet = -1; best = null;
     }
   }
-  if (bestCraft >= 0) selectCraft(bestCraft);
+  if (bestMoon >= 0) selectMoon(bestMoon);
+  else if (bestPlanet >= 0) selectPlanet(bestPlanet);
   else if (best) selectObject(best[0], best[1]);
   else clearSelection();
 }
@@ -1719,29 +1944,42 @@ function runSearch(q) {
   q = q.trim().toLowerCase();
   resultsEl.innerHTML = "";
   if (q.length < 2) { resultsEl.hidden = true; return; }
-  const hits = [];
+  const hits = [];   // { name, cls, select }
+  // planets and moons first — exact-prefix matches are what people want
+  for (let i = 0; i < PLANETS.length; i++) {
+    if (PLANETS[i].name.toLowerCase().includes(q)) {
+      hits.push({ name: PLANETS[i].name, cls: "PLANET", select: () => selectPlanet(i) });
+    }
+  }
+  for (let k = 0; k < moons.count && hits.length < 6; k++) {
+    if (moons.meta[k].name.toLowerCase().includes(q)) {
+      const kk = k;
+      hits.push({ name: moons.meta[k].name + " · " + moons.meta[k].parentName, cls: "MOON", select: () => selectMoon(kk) });
+    }
+  }
   outer:
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     for (let k = 0; k < g.count; k++) {
       if (g.meta[k].name.toLowerCase().includes(q)) {
-        hits.push([gi, k]);
+        const ggi = gi, kk = k;
+        hits.push({ name: g.meta[k].name, cls: g.meta[k].cls, select: () => selectObject(ggi, kk) });
         if (hits.length >= 8) break outer;
       }
     }
   }
   if (!hits.length) { resultsEl.hidden = true; return; }
-  for (const [gi, k] of hits) {
+  for (const h of hits.slice(0, 8)) {
     const li = document.createElement("li");
     const nameSpan = document.createElement("span");
-    nameSpan.textContent = groups[gi].meta[k].name;
+    nameSpan.textContent = h.name;
     const clsSpan = document.createElement("span");
     clsSpan.className = "sr-class";
-    clsSpan.textContent = groups[gi].meta[k].cls;
+    clsSpan.textContent = h.cls;
     li.append(nameSpan, clsSpan);
     li.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
-      selectObject(gi, k);
+      h.select();
       resultsEl.hidden = true;
       searchEl.blur();
     });
@@ -1791,7 +2029,7 @@ canvas.addEventListener("pointermove", (ev) => {
   } else if (pointers.size === 2) {
     const [p1, p2] = [...pointers.values()];
     const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-    if (pinchD0 > 0 && d > 0) state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), 0.18, 240);
+    if (pinchD0 > 0 && d > 0) state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), minDist(), 240);
     dismissHint();
   }
 });
@@ -1806,14 +2044,17 @@ canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", (ev) => {
   ev.preventDefault();
-  state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011), 0.18, 240);
+  state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011), minDist(), 240);
   dismissHint();
 }, { passive: false });
 canvas.addEventListener("dblclick", () => {
+  state.focus = null;     // double-click returns the camera to the Sun
+  retarget();
   Object.assign(state.cam, { tYaw: -1.1, tPitch: 0.55, tDist: 7.8 });
   setTopDown(false, true);
 });
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function minDist() { return state.focus ? 5e-5 : 0.18; }
 
 /* ============================================================
    11. UI wiring — time machine, panels, view

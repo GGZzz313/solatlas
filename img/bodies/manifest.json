@@ -82,5 +82,137 @@
   "borrelly": {
     "file": "img/bodies/borrelly.jpg",
     "credit": "NASA/JPL · Deep Space 1"
+  },
+  "mercury": {
+    "file": "img/bodies/mercury.jpg",
+    "credit": "NASA/JHUAPL · MESSENGER"
+  },
+  "venus": {
+    "file": "img/bodies/venus.jpg",
+    "credit": "NASA/JPL · Mariner 10"
+  },
+  "earth": {
+    "file": "img/bodies/earth.jpg",
+    "credit": "NASA · Apollo 17"
+  },
+  "mars": {
+    "file": "img/bodies/mars.png",
+    "credit": "ESA · Rosetta/OSIRIS"
+  },
+  "jupiter": {
+    "file": "img/bodies/jupiter.png",
+    "credit": "NASA/ESA · Hubble"
+  },
+  "saturn": {
+    "file": "img/bodies/saturn.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "uranus": {
+    "file": "img/bodies/uranus.png",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "neptune": {
+    "file": "img/bodies/neptune.png",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "luna": {
+    "file": "img/bodies/luna.jpg",
+    "credit": "NASA/GSFC · LRO"
+  },
+  "phobos": {
+    "file": "img/bodies/phobos.jpg",
+    "credit": "NASA/JPL/UA · MRO"
+  },
+  "deimos": {
+    "file": "img/bodies/deimos.jpg",
+    "credit": "NASA/JPL/UA · MRO"
+  },
+  "io": {
+    "file": "img/bodies/io.jpg",
+    "credit": "NASA/JPL · Galileo"
+  },
+  "europa-moon": {
+    "file": "img/bodies/europa-moon.png",
+    "credit": "NASA/JPL · Galileo"
+  },
+  "ganymede": {
+    "file": "img/bodies/ganymede.png",
+    "credit": "NASA/JPL · Juno"
+  },
+  "callisto": {
+    "file": "img/bodies/callisto.png",
+    "credit": "NASA/JPL · Galileo"
+  },
+  "amalthea": {
+    "file": "img/bodies/amalthea.png",
+    "credit": "NASA/JPL · Galileo"
+  },
+  "mimas": {
+    "file": "img/bodies/mimas.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "enceladus": {
+    "file": "img/bodies/enceladus.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "tethys": {
+    "file": "img/bodies/tethys.png",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "dione": {
+    "file": "img/bodies/dione.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "rhea": {
+    "file": "img/bodies/rhea.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "titan": {
+    "file": "img/bodies/titan.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "hyperion": {
+    "file": "img/bodies/hyperion.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "iapetus": {
+    "file": "img/bodies/iapetus.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "phoebe-moon": {
+    "file": "img/bodies/phoebe-moon.jpg",
+    "credit": "NASA/JPL/SSI · Cassini"
+  },
+  "miranda": {
+    "file": "img/bodies/miranda.png",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "ariel": {
+    "file": "img/bodies/ariel.jpg",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "umbriel": {
+    "file": "img/bodies/umbriel.jpg",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "titania": {
+    "file": "img/bodies/titania.png",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "oberon": {
+    "file": "img/bodies/oberon.jpg",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "triton": {
+    "file": "img/bodies/triton.jpg",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "proteus": {
+    "file": "img/bodies/proteus.jpg",
+    "credit": "NASA/JPL · Voyager 2"
+  },
+  "charon": {
+    "file": "img/bodies/charon.png",
+    "credit": "NASA/JHUAPL/SwRI · New Horizons"
   }
 }

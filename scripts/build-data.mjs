@@ -41,29 +41,6 @@ async function query(params, fields = AST_FIELDS) {
   return j;
 }
 
-// One spacecraft's heliocentric ecliptic trajectory, sampled as [jd, x, y, z].
-async function horizons(c) {
-  const p = new URLSearchParams({
-    format: "json", COMMAND: `'${c.id}'`, OBJ_DATA: "NO", MAKE_EPHEM: "YES",
-    EPHEM_TYPE: "VECTORS", CENTER: "'500@10'", REF_PLANE: "ECLIPTIC",
-    START_TIME: `'${c.start}'`, STOP_TIME: `'${c.stop}'`, STEP_SIZE: `'${c.step}'`,
-    VEC_TABLE: "1", OUT_UNITS: "AU-D", CSV_FORMAT: "YES",
-  });
-  const j = await getJSON(`https://ssd.jpl.nasa.gov/api/horizons.api?${p}`);
-  const m = (j.result || "").match(/\$\$SOE([\s\S]*?)\$\$EOE/);
-  if (!m) throw new Error("no ephemeris");
-  const points = [];
-  for (const line of m[1].trim().split("\n")) {
-    const f = line.split(",");
-    if (f.length < 5) continue;
-    const jd = +f[0], x = +f[2], y = +f[3], z = +f[4];
-    if (!isFinite(jd) || !isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-    points.push([Math.round(jd * 10) / 10, +x.toFixed(4), +y.toFixed(4), +z.toFixed(4)]);
-  }
-  if (!points.length) throw new Error("no points parsed");
-  return { name: c.name, points };
-}
-
 async function main() {
   console.log("Fetching NASA/JPL small-body data…");
 
@@ -96,27 +73,6 @@ async function main() {
     console.log(`  interstellar (e>1.1)  →  ${interstellar.data.length} objects`);
   } catch (err) {
     console.warn("  interstellar unavailable:", err.message);
-  }
-
-  // ---- spacecraft trajectories (JPL Horizons, heliocentric ecliptic J2000) ----
-  const CRAFT = [
-    { id: "-31", name: "Voyager 1", start: "1977-09-06", stop: "2050-01-01", step: "180d" },
-    { id: "-32", name: "Voyager 2", start: "1977-08-21", stop: "2050-01-01", step: "180d" },
-    { id: "-23", name: "Pioneer 10", start: "1972-03-04", stop: "2040-01-01", step: "180d" },
-    { id: "-24", name: "Pioneer 11", start: "1973-04-07", stop: "2040-01-01", step: "180d" },
-    { id: "-98", name: "New Horizons", start: "2006-01-20", stop: "2050-01-01", step: "180d" },
-    { id: "-96", name: "Parker Solar Probe", start: "2018-08-13", stop: "2025-12-01", step: "10d" },
-    { id: "-49", name: "Lucy", start: "2021-10-17", stop: "2033-03-01", step: "30d" },
-    { id: "-255", name: "Psyche", start: "2023-10-16", stop: "2029-06-01", step: "20d" },
-  ];
-  const spacecraft = [];
-  for (const c of CRAFT) {
-    try {
-      spacecraft.push(await horizons(c));
-      console.log(`  ${c.name.padEnd(20)} →  ${spacecraft[spacecraft.length - 1].points.length} points`);
-    } catch (err) {
-      console.warn(`  ${c.name} unavailable:`, err.message);
-    }
   }
 
   // ---- Sentry impact-risk table (slim to what the UI needs) ----
@@ -167,7 +123,6 @@ async function main() {
     interstellar,
     sentry,
     cad,
-    spacecraft,
   };
 
   await mkdir("data", { recursive: true });
