@@ -1,15 +1,14 @@
 name: data-refresh
 
 # The JPL SSD APIs don't send CORS headers, so browsers can't query them
-# directly. This workflow pulls the data server-side and commits a JSON
-# snapshot that the app serves from its own origin.
+# directly. This workflow runs scripts/build-data.mjs server-side and commits
+# the JSON snapshot the app serves from its own origin.
 on:
   workflow_dispatch:
   schedule:
     - cron: "17 5 * * 1" # weekly, Monday 05:17 UTC
   push:
-    branches: [claude/asteroid-visualization-solar-system-xxmqik]
-    paths: [".github/workflows/data-refresh.yml"]
+    paths: [".github/workflows/data-refresh.yml", "scripts/build-data.mjs"]
 
 permissions:
   contents: write
@@ -23,34 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch NASA/JPL small-body data
-        run: |
-          set -euo pipefail
-          F="pdes,name,a,e,i,om,w,ma,epoch,H,class,diameter"
-          API="https://ssd-api.jpl.nasa.gov/sbdb_query.api"
-          fetchq() {
-            curl -sS --fail --retry 3 --retry-delay 5 --max-time 180 "$1" -o "$2"
-            jq -e '.fields and .data' "$2" > /dev/null
-          }
-          fetchq "$API?fields=$F&sb-kind=a&sb-group=neo&limit=8000"     /tmp/q-neo.json
-          fetchq "$API?fields=$F&sb-kind=a&limit=30000"                 /tmp/q-mba.json
-          fetchq "$API?fields=$F&sb-kind=a&sb-class=TJN&limit=5000"     /tmp/q-tjn.json
-          fetchq "$API?fields=$F&sb-kind=a&sb-class=CEN&limit=2500"     /tmp/q-cen.json
-          fetchq "$API?fields=$F&sb-kind=a&sb-class=TNO&limit=7000"     /tmp/q-tno.json
-          curl -sS --fail --retry 3 --retry-delay 5 --max-time 60 \
-            "https://ssd-api.jpl.nasa.gov/cad.api?dist-max=10LD&date-min=now&date-max=%2B60&sort=date" \
-            -o /tmp/cad.json || echo '{"count":"0"}' > /tmp/cad.json
-          jq -e '.fields and .data' /tmp/cad.json > /dev/null || echo '{"count":"0"}' > /tmp/cad.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-          mkdir -p data
-          jq -c -n \
-            --slurpfile neo /tmp/q-neo.json --slurpfile mba /tmp/q-mba.json \
-            --slurpfile tjn /tmp/q-tjn.json --slurpfile cen /tmp/q-cen.json \
-            --slurpfile tno /tmp/q-tno.json --slurpfile cad /tmp/cad.json \
-            --arg gen "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{generated:$gen, totalKnown:($mba[0].count), queries:[$neo[0],$mba[0],$tjn[0],$cen[0],$tno[0]], cad:$cad[0]}' \
-            > data/asteroids.json
-          ls -la data/
+      - name: Build snapshot from NASA/JPL APIs
+        run: node scripts/build-data.mjs
 
       - name: Commit snapshot
         run: |

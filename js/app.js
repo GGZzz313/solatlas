@@ -147,15 +147,18 @@ const GROUPS = [
   { key: "TJN", label: "Jupiter Trojans", color: [0.37, 0.92, 0.83], css: "#5eead4" },
   { key: "CEN", label: "Centaurs", color: [0.75, 0.52, 0.99], css: "#c084fc" },
   { key: "TNO", label: "Trans-Neptunian", color: [0.49, 0.65, 1.0], css: "#7da7ff" },
+  { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff" },
   { key: "OTH", label: "Other", color: [0.58, 0.64, 0.72], css: "#94a3b8" },
 ];
+// key → group index, so we don't hard-code positions when buckets change.
+const GI = Object.fromEntries(GROUPS.map((g, i) => [g.key, i]));
 const CLASS_TO_GROUP = {
-  IEO: 0, ATE: 0, APO: 0, AMO: 0,
-  MCA: 1,
-  IMB: 2, MBA: 2, OMB: 2,
-  TJN: 3,
-  CEN: 4,
-  TNO: 5,
+  IEO: GI.NEO, ATE: GI.NEO, APO: GI.NEO, AMO: GI.NEO,
+  MCA: GI.MCA,
+  IMB: GI.MBA, MBA: GI.MBA, OMB: GI.MBA,
+  TJN: GI.TJN,
+  CEN: GI.CEN,
+  TNO: GI.TNO,
 };
 const CLASS_NAMES = {
   IEO: "Atira (interior-Earth orbit)", ATE: "Aten near-Earth asteroid",
@@ -164,7 +167,62 @@ const CLASS_NAMES = {
   MBA: "Main-belt asteroid", OMB: "Outer main-belt asteroid",
   TJN: "Jupiter trojan", CEN: "Centaur", TNO: "Trans-Neptunian object",
   AST: "Asteroid", PAA: "Parabolic asteroid", HYA: "Hyperbolic asteroid",
+  COM: "Periodic comet",
 };
+
+// IAU dwarf planets + leading candidates. SBDB often lacks their diameter,
+// so we carry known values for display and to scale the preview. Keyed by
+// primary designation. These are already in the data — this just labels them.
+const DWARFS = {
+  "1": { name: "Ceres", diam: 939 },
+  "134340": { name: "Pluto", diam: 2377 },
+  "136199": { name: "Eris", diam: 2326 },
+  "136108": { name: "Haumea", diam: 1560 },
+  "136472": { name: "Makemake", diam: 1430 },
+  "225088": { name: "Gonggong", diam: 1230 },
+  "50000": { name: "Quaoar", diam: 1090 },
+  "90377": { name: "Sedna", diam: 1000 },
+  "90482": { name: "Orcus", diam: 910 },
+  "120347": { name: "Salacia", diam: 850 },
+};
+
+// The ~21 small bodies that have genuinely been resolved (visited or radar).
+// Everything else uses the procedural preview — we only show a real photo
+// where one exists. credits live in img/bodies/manifest.json.
+const BODY_IMAGES = {
+  ceres: { file: "img/bodies/ceres.jpg", credit: "NASA/JPL-Caltech · Dawn" },
+  vesta: { file: "img/bodies/vesta.jpg", credit: "NASA/JPL-Caltech · Dawn" },
+  pluto: { file: "img/bodies/pluto.png", credit: "NASA/JHUAPL/SwRI · New Horizons" },
+  bennu: { file: "img/bodies/bennu.png", credit: "NASA/Goddard · OSIRIS-REx" },
+  ryugu: { file: "img/bodies/ryugu.jpg", credit: "JAXA · Hayabusa2" },
+  eros: { file: "img/bodies/eros.jpg", credit: "NASA/JPL · NEAR" },
+  itokawa: { file: "img/bodies/itokawa.jpg", credit: "JAXA · Hayabusa" },
+  ida: { file: "img/bodies/ida.jpg", credit: "NASA/JPL · Galileo" },
+  gaspra: { file: "img/bodies/gaspra.jpg", credit: "NASA/JPL · Galileo" },
+  mathilde: { file: "img/bodies/mathilde.jpg", credit: "NASA/JPL · NEAR" },
+  lutetia: { file: "img/bodies/lutetia.jpg", credit: "ESA · Rosetta/OSIRIS" },
+  steins: { file: "img/bodies/steins.jpg", credit: "ESA · Rosetta/OSIRIS" },
+  dinkinesh: { file: "img/bodies/dinkinesh.png", credit: "NASA/Goddard/SwRI · Lucy" },
+  dimorphos: { file: "img/bodies/dimorphos.png", credit: "NASA/JHUAPL · DART" },
+  arrokoth: { file: "img/bodies/arrokoth.png", credit: "NASA/JHUAPL/SwRI · New Horizons" },
+  halley: { file: "img/bodies/halley.jpg", credit: "NASA/NSSDC · 1986" },
+  churyumov: { file: "img/bodies/churyumov.jpg", credit: "ESA · Rosetta/NavCam" },
+  tempel: { file: "img/bodies/tempel.jpg", credit: "NASA/JPL/UMD · Deep Impact" },
+  wild: { file: "img/bodies/wild.jpg", credit: "NASA/JPL · Stardust" },
+  hartley: { file: "img/bodies/hartley.jpg", credit: "NASA/JPL/UMD · EPOXI" },
+  borrelly: { file: "img/bodies/borrelly.jpg", credit: "NASA/JPL · Deep Space 1" },
+};
+// primary designation → BODY_IMAGES key. Matched by designation only —
+// names collide (e.g. asteroid 2688 Halley ≠ comet 1P/Halley).
+const REAL_IMG = {
+  "1": "ceres", "4": "vesta", "134340": "pluto", "101955": "bennu",
+  "162173": "ryugu", "433": "eros", "25143": "itokawa", "243": "ida",
+  "951": "gaspra", "253": "mathilde", "21": "lutetia", "2867": "steins",
+  "152830": "dinkinesh", "65803": "dimorphos", "486958": "arrokoth",
+  "1P": "halley", "67P": "churyumov", "9P": "tempel", "81P": "wild",
+  "103P": "hartley", "19P": "borrelly",
+};
+const sentryMap = new Map();   // designation → risk record (filled at load)
 
 // Per-object element record stride inside group.el:
 // [a, e, b, M0, n, epochD, Px, Py, Pz, Qx, Qy, Qz]
@@ -662,6 +720,16 @@ function project(x, y, z) {
 
 /* ---- HTML overlays: sun halo, planet labels, selection marker ---- */
 let selMarkerEl = null;
+const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
+function buildDwarfList() {
+  dwarfList.length = 0;
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    for (let k = 0; k < g.count; k++) {
+      if (g.meta[k].dwarf) dwarfList.push({ gi, k, name: g.meta[k].dwarf, el: null });
+    }
+  }
+}
 function updateOverlays(pixScale) {
   // sun halo
   const sp = project(0, 0, 0);
@@ -687,6 +755,21 @@ function updateOverlays(pixScale) {
     const show = px > 1.6 && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
     ps.labelEl.style.opacity = show ? "1" : "0";
     if (show) ps.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+  }
+  // dwarf-planet labels (always-on anchors)
+  for (const d of dwarfList) {
+    const g = groups[d.gi];
+    if (!d.el) {
+      d.el = document.createElement("div");
+      d.el.className = "pl-label dwarf-label";
+      d.el.textContent = d.name;
+      labelsEl.appendChild(d.el);
+    }
+    if (!g.visible) { d.el.style.opacity = "0"; continue; }
+    const p = project(g.pos[d.k * 3], g.pos[d.k * 3 + 1], g.pos[d.k * 3 + 2]);
+    const show = p && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
+    d.el.style.opacity = show ? "0.85" : "0";
+    if (show) d.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
   // selection marker
   if (state.selected) {
@@ -736,6 +819,25 @@ function fetchJSON(url) {
   });
 }
 
+// Build the per-object record kept for the info panel & preview, tagging
+// dwarf planets, Sentry-listed objects, and any real imagery we have.
+function makeMeta(r, kind) {
+  const m = {
+    name: r.name, cls: r.cls, a: r.a, e: r.e, i: r.inc,
+    H: r.H, diam: r.diam, albedo: r.albedo, rot: r.rot,
+    spec: r.spec || "", pha: !!r.pha, moid: r.moid,
+    q: r.a * (1 - r.e), kind: kind || "a", dwarf: null, sentry: null, img: null,
+  };
+  const dw = DWARFS[r.pdes];
+  if (dw) {
+    m.dwarf = dw.name;
+    if (!isFinite(m.diam)) m.diam = dw.diam;
+  }
+  m.sentry = sentryMap.get(r.pdes) || sentryMap.get((r.name || "").trim()) || null;
+  m.img = REAL_IMG[r.pdes] || null;
+  return m;
+}
+
 function ingest(resp) {
   if (!resp || !Array.isArray(resp.fields) || !Array.isArray(resp.data)) return 0;
   const ix = {};
@@ -754,11 +856,17 @@ function ingest(resp) {
     if (!(a > 0) || !(e >= 0) || e >= 0.995 || !isFinite(inc) || !isFinite(om) || !isFinite(w) || !isFinite(ma) || !isFinite(ep)) continue;
     seen.add(pdes);
     const cls = (row[ix.class] || "").trim();
-    const gi = cls in CLASS_TO_GROUP ? CLASS_TO_GROUP[cls] : 6;
+    const gi = cls in CLASS_TO_GROUP ? CLASS_TO_GROUP[cls] : GI.OTH;
     const H = num(row[ix.H]);
     const diam = num(row[ix.diameter]);
     const name = (row[ix.name] || "").trim() || pdes;
-    buckets[gi].push({ pdes, name, cls, a, e, inc, om, w, ma, ep, H: isFinite(H) ? H : NaN, diam: isFinite(diam) ? diam : NaN });
+    buckets[gi].push({
+      pdes, name, cls, a, e, inc, om, w, ma, ep,
+      H: isFinite(H) ? H : NaN, diam: isFinite(diam) ? diam : NaN,
+      albedo: num(row[ix.albedo]), rot: num(row[ix.rot_per]),
+      spec: (row[ix.spec_T] || row[ix.spec_B] || "").trim(),
+      pha: (row[ix.pha] || "") === "Y", moid: num(row[ix.moid]),
+    });
   }
 
   let added = 0;
@@ -782,8 +890,10 @@ function ingest(resp) {
       el[o + 6] = Pb[0]; el[o + 7] = Pb[1]; el[o + 8] = Pb[2];
       el[o + 9] = Pb[3]; el[o + 10] = Pb[4]; el[o + 11] = Pb[5];
       const H = isFinite(r.H) ? r.H : 16;
+      const m = makeMeta(r, gi === GI.COM ? "c" : "a");
       sizes[k] = Math.min(0.006 * Math.pow(1.32, Math.max(17 - H, 0)), 0.13);
-      g.meta.push({ name: r.name, cls: r.cls, a: r.a, e: r.e, i: r.inc, H: r.H, diam: r.diam });
+      if (m.dwarf) sizes[k] = Math.max(sizes[k], 0.085);   // make the named dwarfs visible
+      g.meta.push(m);
     });
     g.el = el; g.pos = pos; g.sizes = sizes; g.count = n1;
     if (!g.posBuf) g.posBuf = gl.createBuffer();
@@ -800,6 +910,67 @@ function ingest(resp) {
   return added;
 }
 
+// Comets are given as perihelion distance q + time of perihelion passage tp.
+// Convert to the same {a, M, n, epoch} record the propagator already uses:
+// a = q/(1-e); mean anomaly is 0 at perihelion, so reference the epoch to tp.
+// Long-period / hyperbolic comets (e ≥ 0.995) are skipped — no closed orbit.
+function ingestComets(resp) {
+  if (!resp || !Array.isArray(resp.fields) || !Array.isArray(resp.data)) return 0;
+  const ix = {};
+  resp.fields.forEach((f, k) => (ix[f] = k));
+  for (const f of ["pdes", "e", "i", "om", "w", "q", "tp"]) if (!(f in ix)) return 0;
+  const num = (v) => (v == null || v === "" ? NaN : +v);
+
+  const rows = [];
+  for (const row of resp.data) {
+    const pdes = row[ix.pdes];
+    if (pdes == null || seen.has(pdes)) continue;
+    const e = num(row[ix.e]), q = num(row[ix.q]), tp = num(row[ix.tp]);
+    const inc = num(row[ix.i]), om = num(row[ix.om]), w = num(row[ix.w]);
+    if (!(q > 0) || !(e >= 0) || e >= 0.995 ||
+        !isFinite(inc) || !isFinite(om) || !isFinite(w) || !isFinite(tp)) continue;
+    seen.add(pdes);
+    const diam = num(row[ix.diameter]);
+    rows.push({
+      pdes, name: (row[ix.name] || "").trim() || pdes, cls: "COM",
+      a: q / (1 - e), e, inc, om, w, tp,
+      diam: isFinite(diam) ? diam : NaN, rot: num(row[ix.rot_per]),
+      albedo: NaN, spec: "", pha: false, moid: NaN,
+    });
+  }
+  if (!rows.length) return 0;
+
+  const g = groups[GI.COM];
+  const n0 = g.count, n1 = n0 + rows.length;
+  const el = new Float32Array(n1 * STRIDE); el.set(g.el);
+  const pos = new Float32Array(n1 * 3); pos.set(g.pos);
+  const sizes = new Float32Array(n1); sizes.set(g.sizes);
+  const Pb = new Float64Array(6);
+  rows.forEach((r, j) => {
+    const k = n0 + j, o = k * STRIDE;
+    perifocalBasis(r.w * DEG, r.om * DEG, r.inc * DEG, Pb);
+    el[o] = r.a;
+    el[o + 1] = r.e;
+    el[o + 2] = r.a * Math.sqrt(1 - r.e * r.e);
+    el[o + 3] = 0;                               // M = 0 at perihelion
+    el[o + 4] = GAUSS_K / Math.pow(r.a, 1.5);    // rad/day
+    el[o + 5] = r.tp - J2000;                    // reference epoch = perihelion passage
+    el[o + 6] = Pb[0]; el[o + 7] = Pb[1]; el[o + 8] = Pb[2];
+    el[o + 9] = Pb[3]; el[o + 10] = Pb[4]; el[o + 11] = Pb[5];
+    sizes[k] = 0.05;
+    g.meta.push(makeMeta(r, "c"));
+  });
+  g.el = el; g.pos = pos; g.sizes = sizes; g.count = n1;
+  if (!g.posBuf) g.posBuf = gl.createBuffer();
+  if (g.sizeBuf) gl.deleteBuffer(g.sizeBuf);
+  g.sizeBuf = makeBuffer(sizes);
+  g.dirty = true;
+  state.totalLoaded += rows.length;
+  state.needFullUpdate = true;
+  renderLegend();
+  return rows.length;
+}
+
 let loadedOnce = false;
 async function loadAsteroids() {
   const fill = $("loader-fill");
@@ -809,11 +980,14 @@ async function loadAsteroids() {
   fill.style.width = "15%";
   try {
     const snap = await fetchJSON(DATA_URL);
-    fill.style.width = "70%";
+    fill.style.width = "60%";
     status.textContent = "propagating orbits…";
+    buildSentryMap(snap.sentry);           // before ingest so objects get flagged
     let added = 0;
     for (const q of snap.queries || []) added += ingest(q);
+    added += ingestComets(snap.comets);
     if (!added) throw new Error("snapshot contained no usable records");
+    buildDwarfList();
     fill.style.width = "100%";
     const total = +snap.totalKnown;
     if (total > 0) $("stat-known").textContent = total.toLocaleString("en-US");
@@ -825,6 +999,7 @@ async function loadAsteroids() {
       }
     }
     renderCloseApproaches(snap.cad);
+    renderSentry(snap.sentry);
     loadedOnce = true;
     $("loader").classList.add("done");
   } catch (err) {
@@ -869,6 +1044,62 @@ function renderCloseApproaches(resp) {
   }
 }
 
+/* ---- Sentry impact-risk watchlist (JPL CNEOS, from the snapshot) ---- */
+function buildSentryMap(sentry) {
+  sentryMap.clear();
+  for (const o of (sentry && sentry.objects) || []) {
+    if (o.des != null) sentryMap.set(String(o.des), o);
+  }
+}
+function shortNum(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(n < 1e7 ? 1 : 0) + "M";
+  if (n >= 1e3) return Math.round(n / 1e3) + "k";
+  return String(n);
+}
+/* fly to a Sentry object if it happens to be in the rendered set */
+function sentrySelect(des) {
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    for (let k = 0; k < g.count; k++) {
+      const sr = g.meta[k].sentry;
+      if (sr && String(sr.des) === String(des)) {
+        if (!g.visible) { g.visible = true; renderLegend(); }
+        selectObject(gi, k);
+        if (isFinite(g.meta[k].a)) state.cam.tDist = clamp(g.meta[k].a * 2.4, 1.5, 240);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+function renderSentry(sentry) {
+  const list = $("sentry-list");
+  const objs = (sentry && sentry.objects) || [];
+  if (!objs.length) { list.innerHTML = '<li class="cad-empty">Sentry risk table unavailable</li>'; return; }
+  $("sentry-count").textContent = objs.length.toLocaleString("en-US");
+  list.innerHTML = "";
+  for (const o of objs.slice(0, 50)) {
+    const name = (o.name || o.des || "?").replace(/^\((.*)\)$/, "$1");
+    const torino = o.ts != null && o.ts > 0;
+    const odds = o.ip > 0 ? "1 in " + shortNum(Math.round(1 / o.ip)) : "—";
+    const diam = isFinite(o.diam) ? formatKm(o.diam) : "—";
+    const cls = torino ? "sn-hi" : (o.ps != null && o.ps > -2 ? "sn-mid" : "sn-lo");
+    const li = document.createElement("li");
+    li.innerHTML =
+      `<span class="sn-name"></span>` +
+      `<span class="sn-risk ${cls}">${torino ? "Torino " + o.ts : "Palermo " + (o.ps != null ? o.ps.toFixed(1) : "?")}</span>` +
+      `<span class="sn-meta">${diam} · ${odds}${o.range ? " · " + o.range : ""}</span>`;
+    li.querySelector(".sn-name").textContent = name;
+    li.addEventListener("click", () => {
+      if (!sentrySelect(o.des)) {
+        li.classList.add("sn-flash");
+        setTimeout(() => li.classList.remove("sn-flash"), 600);
+      }
+    });
+    list.appendChild(li);
+  }
+}
+
 /* ============================================================
    8. Legend / filters
    ============================================================ */
@@ -895,6 +1126,12 @@ function renderLegend() {
 /* ============================================================
    9. Selection, info card & search
    ============================================================ */
+function setRow(rowId, ddId, value) {
+  const row = $(rowId);
+  if (value == null) { row.hidden = true; }
+  else { row.hidden = false; $(ddId).textContent = value; }
+}
+
 function selectObject(gi, k) {
   const g = groups[gi];
   const m = g.meta[k];
@@ -906,20 +1143,59 @@ function selectObject(gi, k) {
     Qx: el[o + 9], Qy: el[o + 10], Qz: el[o + 11],
   });
   $("info-name").textContent = m.name;
-  $("info-class").textContent = CLASS_NAMES[m.cls] || m.cls || "asteroid";
+  $("info-class").textContent =
+    (m.dwarf ? "Dwarf planet · " : "") + (CLASS_NAMES[m.cls] || m.cls || "asteroid");
+
+  // hazard / status badges
+  const badges = $("info-badges");
+  badges.innerHTML = "";
+  if (m.dwarf) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-dwarf">● Dwarf planet</span>`);
+  if (m.sentry) {
+    const s = m.sentry;
+    const txt = s.ts != null && s.ts > 0 ? "Torino " + s.ts
+      : "Palermo " + (s.ps != null ? s.ps.toFixed(1) : "?");
+    const odds = s.ip > 0 ? " · 1 in " + shortNum(Math.round(1 / s.ip)) : "";
+    badges.insertAdjacentHTML("beforeend", `<span class="badge badge-sentry">☢ Sentry risk · ${txt}${odds}</span>`);
+  } else if (m.pha) {
+    badges.insertAdjacentHTML("beforeend", `<span class="badge badge-pha">⚠ Potentially hazardous</span>`);
+  }
+
+  // orbital
   $("info-a").textContent = m.a.toFixed(3) + " au";
   $("info-e").textContent = m.e.toFixed(3);
   $("info-i").textContent = m.i.toFixed(1) + "°";
   $("info-per").textContent = formatPeriod(Math.pow(m.a, 1.5));
-  let dTxt = "—";
+
+  // diameter: measured if we have it, else estimated from absolute magnitude
+  let dTxt = "—", dLabel = "diameter";
   if (isFinite(m.diam)) dTxt = formatKm(m.diam);
-  else if (isFinite(m.H)) dTxt = "~" + formatKm(1329 / Math.sqrt(0.14) * Math.pow(10, -m.H / 5));
+  else if (isFinite(m.H)) {
+    const alb = isFinite(m.albedo) && m.albedo > 0 ? m.albedo : 0.14;
+    dTxt = "~" + formatKm(1329 / Math.sqrt(alb) * Math.pow(10, -m.H / 5));
+    dLabel = "est. diameter";
+  }
   $("info-d").textContent = dTxt;
+  $("info-d-label").textContent = dLabel;
+
+  // optional rows — hidden when the datum is missing
+  const showQ = gi === GI.NEO || gi === GI.MCA || m.kind === "c";
+  setRow("info-row-q", "info-q", showQ ? m.q.toFixed(3) + " au" : null);
+  setRow("info-row-albedo", "info-albedo", isFinite(m.albedo) ? m.albedo.toFixed(2) : null);
+  setRow("info-row-rot", "info-rot", isFinite(m.rot) && m.rot > 0 ? formatHours(m.rot) : null);
+  setRow("info-row-spec", "info-spec", m.spec || null);
+  setRow("info-row-moid", "info-moid", isFinite(m.moid) ? m.moid.toFixed(3) + " au" : null);
+
+  const link = $("info-link");
+  link.href = "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=" + encodeURIComponent(m.name);
+  link.hidden = false;
+
+  renderPreview(m);
   $("panel-info").hidden = false;
 }
 function clearSelection() {
   state.selected = null;
   selOrbitCount = 0;
+  stopPreview();
   $("panel-info").hidden = true;
 }
 function formatPeriod(yr) {
@@ -927,6 +1203,170 @@ function formatPeriod(yr) {
 }
 function formatKm(km) {
   return km < 1 ? Math.round(km * 1000) + " m" : km < 10 ? km.toFixed(1) + " km" : Math.round(km) + " km";
+}
+function formatHours(h) {
+  if (h < 1) return Math.round(h * 60) + " min";
+  if (h < 48) return h.toFixed(h < 10 ? 2 : 1) + " h";
+  return (h / 24).toFixed(1) + " d";
+}
+
+/* ============================================================
+   9b. Object preview — real photo where one exists, else a
+   procedural representation driven by the object's real
+   diameter, albedo, spectral class and rotation.
+   ============================================================ */
+let previewRAF = 0;
+function stopPreview() { if (previewRAF) { cancelAnimationFrame(previewRAF); previewRAF = 0; } }
+
+function renderPreview(m) {
+  stopPreview();
+  const cv = $("preview-canvas");
+  const img = $("preview-img");
+  const cap = $("preview-cap");
+  const key = m.img;
+  if (key && BODY_IMAGES[key]) {
+    img.src = BODY_IMAGES[key].file;
+    img.hidden = false; cv.hidden = true;
+    cap.textContent = "📷 real image · " + BODY_IMAGES[key].credit;
+    cap.classList.add("real");
+    return;
+  }
+  img.hidden = true; img.removeAttribute("src"); cv.hidden = false;
+  cap.classList.remove("real");
+  cap.textContent = "representation · scaled to size, albedo & class — not a photograph";
+  drawProcedural(cv, m);
+}
+
+function hashSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const _rgb = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const _cl = (c) => c.map((v) => (v < 0 ? 0 : v > 255 ? 255 : v));
+function bodyPalette(m) {
+  const s = (m.spec || "").toUpperCase();
+  if (m.kind === "c") return [120, 140, 165];                 // icy comet nucleus
+  if (/^[CBFGPDT]/.test(s)) return [86, 74, 64];              // carbonaceous / primitive — dark
+  if (/^[SQAVR]/.test(s)) return [165, 130, 96];              // stony / silicaceous — tan
+  if (/^[MXE]/.test(s)) return [150, 150, 162];               // metallic — grey
+  if (m.dwarf) return [184, 174, 162];                        // icy dwarf — pale
+  return [126, 118, 110];                                     // unknown — neutral
+}
+
+function drawProcedural(cv, m) {
+  const dprL = Math.min(window.devicePixelRatio || 1, 2);
+  const W = cv.clientWidth || 300, H = cv.clientHeight || 170;
+  cv.width = W * dprL; cv.height = H * dprL;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dprL, 0, 0, dprL, 0, 0);
+  const cx = W / 2, cy = H / 2;
+  const rnd = mulberry32(hashSeed(m.name));
+  const base = bodyPalette(m);
+  const isComet = m.kind === "c";
+  const dk = isFinite(m.diam) ? m.diam : 5;
+  const round = isComet ? 0.65 : Math.min(0.85, 0.25 + Math.log10(Math.max(dk, 1)) / 4);
+  const R = Math.min(W, H) * 0.30;
+  const albk = isFinite(m.albedo) && m.albedo > 0 ? Math.min(1.4, 0.5 + m.albedo * 2.2) : 0.85;
+  const spin = isFinite(m.rot) && m.rot > 0 ? Math.min(0.6, 2.0 / m.rot) : 0.22;
+
+  const harm = [];
+  for (let i = 0; i < 4; i++) harm.push({ k: i + 2, amp: (1 - round) * (0.10 + rnd() * 0.13) / (i + 1), ph: rnd() * TWO_PI });
+  const silR = (a) => { let r = R; for (const h of harm) r += R * h.amp * Math.sin(h.k * a + h.ph); return r; };
+
+  const craters = [];
+  const nC = isComet ? 4 : 8 + Math.floor(rnd() * 8);
+  for (let i = 0; i < nC; i++) craters.push({ lon: rnd() * TWO_PI, lat: (rnd() - 0.5) * 1.4, r: (0.06 + rnd() * 0.13) * R, d: 0.45 + rnd() * 0.3 });
+  const speck = [];
+  for (let i = 0; i < 55; i++) speck.push({ lon: rnd() * TWO_PI, lat: (rnd() - 0.5) * Math.PI * 0.9, r: 0.5 + rnd() * 1.5, t: rnd() * 0.5 - 0.25 });
+
+  const project = (lon, lat, r) => {
+    const cl = Math.cos(lat), front = Math.cos(lon) * cl;
+    if (front <= 0.03) return null;
+    return { x: Math.sin(lon) * cl * r, y: -Math.sin(lat) * r * 0.96, f: front };
+  };
+  const tracePath = () => {
+    ctx.beginPath();
+    for (let s = 0; s <= 64; s++) {
+      const a = (s / 64) * TWO_PI, r = silR(a);
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.96;
+      s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  };
+
+  let t0 = null;
+  function frame(ts) {
+    if (t0 == null) t0 = ts;
+    const phase = ((ts - t0) / 1000) * spin;
+    ctx.clearRect(0, 0, W, H);
+    if (isComet) drawComa(ctx, cx, cy, R, phase, albk);
+
+    ctx.save();
+    tracePath();
+    ctx.clip();
+    ctx.fillStyle = _rgb(base, 1);
+    ctx.fillRect(cx - R * 1.7, cy - R * 1.7, R * 3.4, R * 3.4);
+    for (const sp of speck) {
+      const p = project(sp.lon + phase, sp.lat, R);
+      if (!p) continue;
+      ctx.fillStyle = _rgb(_cl(base.map((v) => v * (1 + sp.t))), 0.5);
+      ctx.beginPath(); ctx.arc(cx + p.x, cy + p.y, sp.r * p.f, 0, TWO_PI); ctx.fill();
+    }
+    for (const cr of craters) {
+      const p = project(cr.lon + phase, cr.lat, R);
+      if (!p) continue;
+      const rr = cr.r * p.f; if (rr < 1) continue;
+      const g = ctx.createRadialGradient(cx + p.x - rr * 0.3, cy + p.y - rr * 0.3, rr * 0.1, cx + p.x, cy + p.y, rr);
+      g.addColorStop(0, _rgb(_cl(base.map((v) => v * cr.d)), 0.9));
+      g.addColorStop(0.7, _rgb(_cl(base.map((v) => v * (cr.d + 0.25))), 0.45));
+      g.addColorStop(1, _rgb(base, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx + p.x, cy + p.y, rr, 0, TWO_PI); ctx.fill();
+    }
+    // light from upper-left, shadow opposite
+    const lg = ctx.createRadialGradient(cx - 0.55 * R, cy - 0.5 * R, R * 0.1, cx, cy, R * 1.5);
+    lg.addColorStop(0, `rgba(255,250,236,${0.45 * albk})`);
+    lg.addColorStop(0.45, "rgba(255,250,236,0)");
+    lg.addColorStop(1, "rgba(0,0,8,0.74)");
+    ctx.fillStyle = lg;
+    ctx.fillRect(cx - R * 1.8, cy - R * 1.8, R * 3.6, R * 3.6);
+    ctx.restore();
+
+    ctx.save();
+    tracePath();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = "rgba(150,180,235,0.16)";
+    ctx.stroke();
+    ctx.restore();
+
+    previewRAF = requestAnimationFrame(frame);
+  }
+  previewRAF = requestAnimationFrame(frame);
+}
+function drawComa(ctx, cx, cy, R, phase, albk) {
+  const flick = 0.85 + 0.15 * Math.sin(phase * 4);
+  const tg = ctx.createLinearGradient(cx, cy, cx + R * 5, cy - R * 1.0);
+  tg.addColorStop(0, `rgba(150,232,255,${0.32 * flick})`);
+  tg.addColorStop(1, "rgba(120,200,255,0)");
+  ctx.fillStyle = tg;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - R * 0.6); ctx.lineTo(cx + R * 5, cy - R * 1.5);
+  ctx.lineTo(cx + R * 5, cy + R * 0.3); ctx.lineTo(cx, cy + R * 0.5);
+  ctx.closePath(); ctx.fill();
+  const cg = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 2.0);
+  cg.addColorStop(0, `rgba(205,246,255,${0.5 * flick})`);
+  cg.addColorStop(1, "rgba(150,220,255,0)");
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.arc(cx, cy, R * 2.0, 0, TWO_PI); ctx.fill();
 }
 
 function pickAt(x, y) {
@@ -1094,6 +1534,7 @@ function togglePanel(id, fab) {
 }
 $("fab-legend").addEventListener("click", (ev) => togglePanel("panel-legend", ev.currentTarget));
 $("fab-cad").addEventListener("click", (ev) => togglePanel("panel-cad", ev.currentTarget));
+$("fab-sentry").addEventListener("click", (ev) => togglePanel("panel-sentry", ev.currentTarget));
 
 function setTopDown(on, skipCamera) {
   state.topDown = on;

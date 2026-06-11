@@ -54,6 +54,7 @@
 <div id="fab-col">
   <button id="fab-legend" class="fab" title="Layers & legend" aria-label="Layers and legend">◈</button>
   <button id="fab-cad" class="fab" title="Close approaches" aria-label="Close approaches">⚠</button>
+  <button id="fab-sentry" class="fab" title="Sentry impact risk" aria-label="Sentry impact risk">☢</button>
   <button id="fab-view" class="fab" title="Top-down view" aria-label="Toggle top-down view">⊙</button>
 </div>
 
@@ -70,18 +71,36 @@
   <ul id="cad-list"><li class="cad-loading">querying JPL CNEOS…</li></ul>
 </aside>
 
+<!-- ======================= Sentry watchlist ======================= -->
+<aside id="panel-sentry" class="panel closed">
+  <div class="panel-head"><h2>Sentry watchlist <span class="sub"><span id="sentry-count">0</span> objects · non-zero Earth-impact odds</span></h2><button class="panel-close" data-close="panel-sentry" aria-label="Close">✕</button></div>
+  <ul id="sentry-list"><li class="cad-loading">querying JPL CNEOS Sentry…</li></ul>
+</aside>
+
 <!-- ======================= Selected object card ======================= -->
 <aside id="panel-info" class="panel" hidden>
   <div class="panel-head"><h2 id="info-name">—</h2><button class="panel-close" data-close="panel-info" aria-label="Close">✕</button></div>
   <p id="info-class" class="info-class">—</p>
+  <div id="info-preview">
+    <canvas id="preview-canvas"></canvas>
+    <img id="preview-img" alt="" hidden>
+    <span id="preview-cap" class="preview-cap"></span>
+  </div>
+  <div id="info-badges" class="info-badges"></div>
   <dl id="info-grid">
     <div><dt>semi-major axis</dt><dd id="info-a">—</dd></div>
     <div><dt>eccentricity</dt><dd id="info-e">—</dd></div>
     <div><dt>inclination</dt><dd id="info-i">—</dd></div>
     <div><dt>orbital period</dt><dd id="info-per">—</dd></div>
     <div><dt>distance from Sun</dt><dd id="info-r">—</dd></div>
-    <div><dt>est. diameter</dt><dd id="info-d">—</dd></div>
+    <div><dt id="info-d-label">diameter</dt><dd id="info-d">—</dd></div>
+    <div id="info-row-q" hidden><dt>perihelion</dt><dd id="info-q">—</dd></div>
+    <div id="info-row-albedo" hidden><dt>albedo</dt><dd id="info-albedo">—</dd></div>
+    <div id="info-row-rot" hidden><dt>rotation</dt><dd id="info-rot">—</dd></div>
+    <div id="info-row-spec" hidden><dt>spectral type</dt><dd id="info-spec">—</dd></div>
+    <div id="info-row-moid" hidden><dt>Earth MOID</dt><dd id="info-moid">—</dd></div>
   </dl>
+  <a id="info-link" class="info-link" target="_blank" rel="noopener" hidden>full record · JPL Small-Body Database ↗</a>
 </aside>
 
 <!-- ======================= Time controls ======================= -->

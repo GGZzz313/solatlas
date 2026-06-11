@@ -1,0 +1,86 @@
+{
+  "ceres": {
+    "file": "img/bodies/ceres.jpg",
+    "credit": "NASA/JPL-Caltech/Dawn"
+  },
+  "vesta": {
+    "file": "img/bodies/vesta.jpg",
+    "credit": "NASA/JPL-Caltech/Dawn"
+  },
+  "pluto": {
+    "file": "img/bodies/pluto.png",
+    "credit": "NASA/JHUAPL/SwRI · New Horizons"
+  },
+  "bennu": {
+    "file": "img/bodies/bennu.png",
+    "credit": "NASA/Goddard/OSIRIS-REx"
+  },
+  "ryugu": {
+    "file": "img/bodies/ryugu.jpg",
+    "credit": "JAXA/Hayabusa2"
+  },
+  "eros": {
+    "file": "img/bodies/eros.jpg",
+    "credit": "NASA/JPL/NEAR"
+  },
+  "itokawa": {
+    "file": "img/bodies/itokawa.jpg",
+    "credit": "JAXA/Hayabusa"
+  },
+  "ida": {
+    "file": "img/bodies/ida.jpg",
+    "credit": "NASA/JPL/Galileo"
+  },
+  "gaspra": {
+    "file": "img/bodies/gaspra.jpg",
+    "credit": "NASA/JPL/Galileo"
+  },
+  "mathilde": {
+    "file": "img/bodies/mathilde.jpg",
+    "credit": "NASA/JPL/NEAR"
+  },
+  "lutetia": {
+    "file": "img/bodies/lutetia.jpg",
+    "credit": "ESA/Rosetta/OSIRIS"
+  },
+  "steins": {
+    "file": "img/bodies/steins.jpg",
+    "credit": "ESA/Rosetta/OSIRIS"
+  },
+  "dinkinesh": {
+    "file": "img/bodies/dinkinesh.png",
+    "credit": "NASA/Goddard/SwRI/Lucy"
+  },
+  "dimorphos": {
+    "file": "img/bodies/dimorphos.png",
+    "credit": "NASA/JHUAPL/DART"
+  },
+  "arrokoth": {
+    "file": "img/bodies/arrokoth.png",
+    "credit": "NASA/JHUAPL/SwRI · New Horizons"
+  },
+  "halley": {
+    "file": "img/bodies/halley.jpg",
+    "credit": "ESA/Giotto/MPAe"
+  },
+  "churyumov": {
+    "file": "img/bodies/churyumov.jpg",
+    "credit": "ESA/Rosetta/NavCam"
+  },
+  "tempel": {
+    "file": "img/bodies/tempel.jpg",
+    "credit": "NASA/JPL/UMD · Deep Impact"
+  },
+  "wild": {
+    "file": "img/bodies/wild.jpg",
+    "credit": "NASA/JPL/Stardust"
+  },
+  "hartley": {
+    "file": "img/bodies/hartley.jpg",
+    "credit": "NASA/JPL/UMD · EPOXI"
+  },
+  "borrelly": {
+    "file": "img/bodies/borrelly.jpg",
+    "credit": "NASA/JPL · Deep Space 1"
+  }
+}

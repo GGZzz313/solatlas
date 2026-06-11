@@ -270,6 +270,80 @@ html, body {
 #info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 #info-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
 #info-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+#panel-info { max-height: min(74vh, 640px); overflow-y: auto; scrollbar-width: thin; }
+
+/* ---- object preview ---- */
+#info-preview {
+  position: relative;
+  height: 150px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background: radial-gradient(120% 120% at 30% 25%, #0a1020 0%, #04060d 75%);
+  border: 1px solid var(--glass-border);
+}
+#preview-canvas, #preview-img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+#preview-img { object-fit: cover; }
+#preview-canvas[hidden], #preview-img[hidden] { display: none; }
+.preview-cap {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 5px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  background: linear-gradient(0deg, rgba(4, 6, 13, 0.82), transparent);
+}
+.preview-cap.real { color: #a7f3d0; }
+
+/* ---- hazard / status badges ---- */
+.info-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.info-badges:empty { display: none; }
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  border-radius: 99px;
+  border: 1px solid currentColor;
+}
+.badge-dwarf { color: #c4b5fd; background: rgba(196, 181, 253, 0.1); }
+.badge-pha { color: #fbbf77; background: rgba(251, 146, 60, 0.12); }
+.badge-sentry { color: #fb7185; background: rgba(244, 63, 94, 0.14); }
+
+.info-link {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  text-decoration: none;
+}
+.info-link:hover { text-decoration: underline; }
+
+/* ---- Sentry watchlist ---- */
+#panel-sentry { left: 16px; top: 86px; width: 312px; max-height: min(60vh, 460px); display: flex; flex-direction: column; }
+#sentry-list { list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; scrollbar-width: thin; }
+#sentry-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(140, 165, 220, 0.06);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#sentry-list li:hover { background: rgba(125, 211, 252, 0.12); }
+#sentry-list li.sn-flash { animation: sn-flash 0.6s ease; }
+@keyframes sn-flash { 0%, 100% { background: rgba(140, 165, 220, 0.06); } 30% { background: rgba(251, 113, 133, 0.28); } }
+.sn-name { font-weight: 600; color: var(--ink); }
+.sn-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-dim); grid-column: 1; }
+.sn-risk { font-family: var(--mono); font-size: 11px; grid-row: 1 / span 2; align-self: center; text-align: right; }
+.sn-hi { color: #fb7185; }
+.sn-mid { color: #fde68a; }
+.sn-lo { color: #86efac; }
 
 /* ============================================================
    Header
@@ -498,7 +572,7 @@ html, body {
   .search-wrap { width: 100%; order: 3; margin-left: 0; }
   .hide-sm { display: none !important; }
 
-  #panel-legend, #panel-cad {
+  #panel-legend, #panel-cad, #panel-sentry {
     display: none;
     left: 12px;
     right: 12px;
@@ -509,8 +583,8 @@ html, body {
     max-height: 46vh;
     overflow-y: auto;
   }
-  #panel-legend.open, #panel-cad.open { display: block; }
-  #panel-cad.open { display: flex; }
+  #panel-legend.open, #panel-cad.open, #panel-sentry.open { display: block; }
+  #panel-cad.open, #panel-sentry.open { display: flex; }
 
   #panel-info { left: 12px; right: 12px; width: auto; bottom: calc(96px + var(--safe-b)); }
   #info-grid { grid-template-columns: repeat(3, 1fr); }
@@ -533,6 +607,8 @@ html, body {
   #panel-legend.closed { display: none; }
   #panel-cad.closed { display: none; }
   #panel-cad { top: auto; bottom: calc(96px + var(--safe-b)); right: 16px; }
+  #panel-sentry { display: flex; }
+  #panel-sentry.closed { display: none; }
   #fab-col { top: 50%; }
 }
 
