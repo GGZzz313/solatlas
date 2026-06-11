@@ -22,6 +22,13 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
   elements (`q`, `tp`) and propagated on the same Keplerian engine.
 - **Dwarf planets** — Ceres, Pluto, Eris, Haumea, Makemake and friends carry always-on
   labels so you can find them in the crowd.
+- **Interstellar visitors** — 1I/ʻOumuamua, 2I/Borisov and 3I/ATLAS, propagated on a
+  hyperbolic Kepler solver and drawn as the open, unbound trajectories they really are.
+- **Spacecraft** — live positions and full trajectories for Voyager 1 & 2, Pioneer 10 &
+  11, New Horizons, Parker Solar Probe, Lucy and Psyche, straight from JPL Horizons —
+  watch them fly with the time machine and click for distance, speed and mission.
+- **Hazard highlight** — toggle a layer that lights up every Potentially Hazardous
+  Asteroid in orange.
 - **A time machine** — play the solar system forward or backward at up to 5 years per
   second and watch the belt churn, trojans hold their Lagrange camps, and NEOs dive
   across Earth's orbit.
@@ -46,6 +53,7 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 | [JPL Small-Body Database Query API](https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html) | Orbital elements, magnitudes, diameters, albedo, rotation, spectral class and orbit classes for ~50k asteroids **and comets** (NEOs, main belt, trojans, centaurs, TNOs, comets) |
 | [JPL CNEOS Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) | Earth-impact risk table (Torino/Palermo scale, probabilities) |
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
+| [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Spacecraft trajectories (heliocentric ecliptic state vectors) |
 | [JPL Approximate Planetary Ephemeris](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | Planet positions (embedded Keplerian elements + rates) |
 
 Spacecraft imagery for the ~21 visited/resolved bodies (Ceres, Vesta, Pluto, Bennu,
@@ -87,14 +95,16 @@ node test/orbits.test.js
 ## 🧭 How it works
 
 1. **Fetch** — a weekly GitHub Actions job runs `scripts/build-data.mjs`: SBDB queries
-   for asteroids (NEOs, main belt, trojans, centaurs, TNOs) and comets, plus the CNEOS
-   Sentry and close-approach feeds, committed as one packed JSON snapshot; the app
-   ingests it into typed arrays and dedupes by designation. Comets are converted from
-   `q`/`tp` to the same `{a, M, n}` record the propagator uses.
+   for asteroids (NEOs, main belt, trojans, centaurs, TNOs), comets and the interstellar
+   visitors, plus the CNEOS Sentry/close-approach feeds and Horizons spacecraft
+   trajectories — committed as one packed JSON snapshot; the app ingests it into typed
+   arrays and dedupes by designation. Comets and ISOs are converted from `q`/`tp` to the
+   same `{a, M, n}` record the propagator uses.
 2. **Propagate** — per frame, mean anomaly is advanced from each body's epoch and
-   Kepler's equation is solved by Newton iteration; the perifocal→ecliptic basis is
-   precomputed once per object. On slower devices the population is updated in
-   rotating slices.
+   Kepler's equation is solved by Newton iteration (the hyperbolic form for interstellar
+   objects); the perifocal→ecliptic basis is precomputed once per object. Spacecraft
+   positions are interpolated along their sampled Horizons trajectories. On slower
+   devices the population is updated in rotating slices.
 3. **Render** — hand-rolled WebGL1: additive-blended point sprites with soft gaussian
    falloff for asteroids/stars/planets, line loops for orbits, a CSS bloom tracking the
    Sun's projected position, and a twinkling 4,700-star backdrop with a milky-way band.

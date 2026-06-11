@@ -148,6 +148,7 @@ const GROUPS = [
   { key: "CEN", label: "Centaurs", color: [0.75, 0.52, 0.99], css: "#c084fc" },
   { key: "TNO", label: "Trans-Neptunian", color: [0.49, 0.65, 1.0], css: "#7da7ff" },
   { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff" },
+  { key: "ISO", label: "Interstellar", color: [1.0, 0.42, 0.85], css: "#ff6bd9" },
   { key: "OTH", label: "Other", color: [0.58, 0.64, 0.72], css: "#94a3b8" },
 ];
 // key → group index, so we don't hard-code positions when buckets change.
@@ -167,7 +168,19 @@ const CLASS_NAMES = {
   MBA: "Main-belt asteroid", OMB: "Outer main-belt asteroid",
   TJN: "Jupiter trojan", CEN: "Centaur", TNO: "Trans-Neptunian object",
   AST: "Asteroid", PAA: "Parabolic asteroid", HYA: "Hyperbolic asteroid",
-  COM: "Periodic comet",
+  COM: "Periodic comet", ISO: "Interstellar object",
+};
+
+// Spacecraft blurbs for the info card, keyed by name (matched from Horizons).
+const SPACECRAFT_INFO = {
+  "Voyager 1": { op: "NASA/JPL", launch: 1977, note: "Farthest human-made object; in interstellar space since 2012." },
+  "Voyager 2": { op: "NASA/JPL", launch: 1977, note: "Only probe to visit all four giant planets; in interstellar space since 2018." },
+  "Pioneer 10": { op: "NASA/Ames", launch: 1972, note: "First probe through the asteroid belt and past Jupiter. Last contact 2003." },
+  "Pioneer 11": { op: "NASA/Ames", launch: 1973, note: "First flyby of Saturn. Last contact 1995." },
+  "New Horizons": { op: "NASA/JHUAPL", launch: 2006, note: "Flew past Pluto (2015) and Arrokoth (2019); now exploring the Kuiper Belt." },
+  "Parker Solar Probe": { op: "NASA/JHUAPL", launch: 2018, note: "Diving through the Sun's corona — the fastest object ever built." },
+  "Lucy": { op: "NASA/SwRI", launch: 2021, note: "Touring the Jupiter Trojan asteroids through the 2030s." },
+  "Psyche": { op: "NASA/JPL", launch: 2023, note: "En route to the metal asteroid 16 Psyche, arriving 2029." },
 };
 
 // IAU dwarf planets + leading candidates. SBDB often lacks their diameter,
@@ -245,6 +258,9 @@ const state = {
   topDown: false,
   savedPitch: 0.55,
   selected: null,          // { group, index }
+  selCraft: null,          // selected spacecraft index
+  showPHA: false,          // highlight potentially-hazardous asteroids
+  showCraft: true,         // show spacecraft + trajectories
   totalLoaded: 0,
   shownCount: 0,
   needFullUpdate: true,
@@ -266,6 +282,8 @@ const groups = GROUPS.map((g) => ({
 }));
 
 const seen = new Set();          // pdes dedupe across queries
+const phaList = [];              // { gi, k } for potentially-hazardous asteroids
+const spacecraft = [];           // { name, pts:Float64Array[jd,x,y,z]*N, pos, trajBuf, ... }
 
 /* ============================================================
    4. WebGL renderer
@@ -494,17 +512,33 @@ function buildPlanetOrbits() {
 }
 buildPlanetOrbits();
 
-/* selected-orbit line (dynamic) */
+/* selected-orbit line (dynamic) — closed ellipse, or open hyperbola for ISOs */
 let selOrbitBuf = gl.createBuffer();
 let selOrbitCount = 0;
+let selOrbitStrip = false;
 function buildSelectedOrbit(rec) {
   const SEG = 256;
   const verts = new Float32Array(SEG * 3);
   const P = [rec.Px, rec.Py, rec.Pz, rec.Qx, rec.Qy, rec.Qz];
-  const tmp = new Float64Array(3);
-  for (let s = 0; s < SEG; s++) {
-    ellipsePoint(rec.a, rec.e, rec.b, P, (s / SEG) * TWO_PI, tmp);
-    verts[s * 3] = tmp[0]; verts[s * 3 + 1] = tmp[1]; verts[s * 3 + 2] = tmp[2];
+  if (rec.e > 1) {
+    selOrbitStrip = true;
+    const aAbs = Math.abs(rec.a);
+    const Fmax = Math.min(5, Math.acosh((80 / aAbs + 1) / rec.e) || 4);
+    for (let s = 0; s < SEG; s++) {
+      const F = -Fmax + 2 * Fmax * (s / (SEG - 1));
+      const xp = aAbs * (rec.e - Math.cosh(F));
+      const yp = rec.b * Math.sinh(F);
+      verts[s * 3] = xp * P[0] + yp * P[3];
+      verts[s * 3 + 1] = xp * P[1] + yp * P[4];
+      verts[s * 3 + 2] = xp * P[2] + yp * P[5];
+    }
+  } else {
+    selOrbitStrip = false;
+    const tmp = new Float64Array(3);
+    for (let s = 0; s < SEG; s++) {
+      ellipsePoint(rec.a, rec.e, rec.b, P, (s / SEG) * TWO_PI, tmp);
+      verts[s * 3] = tmp[0]; verts[s * 3 + 1] = tmp[1]; verts[s * 3 + 2] = tmp[2];
+    }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, selOrbitBuf);
   gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
@@ -555,6 +589,28 @@ function updateGroupPositions(g, from, to, t) {
   }
 }
 
+// Hyperbolic version for interstellar objects (e > 1, a < 0). Solves the
+// hyperbolic Kepler equation  M = e·sinh(F) − F  by Newton iteration.
+function updateHyperbolic(g, from, to, t) {
+  const el = g.el, pos = g.pos;
+  for (let k = from; k < to; k++) {
+    const o = k * STRIDE;
+    const aAbs = -el[o], e = el[o + 1], b = el[o + 2];
+    const M = el[o + 3] + el[o + 4] * (t - el[o + 5]);
+    let F = Math.asinh(M / e) || M;
+    for (let j = 0; j < 24; j++) {
+      const d = (e * Math.sinh(F) - F - M) / (e * Math.cosh(F) - 1);
+      F -= d;
+      if (d < 1e-9 && d > -1e-9) break;
+    }
+    const xp = aAbs * (e - Math.cosh(F));   // = q at F = 0
+    const yp = b * Math.sinh(F);
+    pos[k * 3] = xp * el[o + 6] + yp * el[o + 9];
+    pos[k * 3 + 1] = xp * el[o + 7] + yp * el[o + 10];
+    pos[k * 3 + 2] = xp * el[o + 8] + yp * el[o + 11];
+  }
+}
+
 function propagate() {
   const t = state.simJD - J2000;
   const t0 = performance.now();
@@ -562,13 +618,14 @@ function propagate() {
   const cursor = state.sliceCursor;
   for (const g of groups) {
     if (!g.count) continue;
-    if (slices === 1) {
-      updateGroupPositions(g, 0, g.count, t);
+    const upd = g.hyperbolic ? updateHyperbolic : updateGroupPositions;
+    if (slices === 1 || g.hyperbolic) {
+      upd(g, 0, g.count, t);
     } else {
       const span = Math.ceil(g.count / slices);
       const from = Math.min(cursor * span, g.count);
       const to = Math.min(from + span, g.count);
-      updateGroupPositions(g, from, to, t);
+      upd(g, from, to, t);
     }
     g.dirty = true;
   }
@@ -617,6 +674,13 @@ function render(now) {
       gl.bindBuffer(gl.ARRAY_BUFFER, ps.posBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tmp), gl.DYNAMIC_DRAW);
     }
+    if (state.showCraft) {
+      for (const c of spacecraft) {
+        craftPositionAt(c, state.simJD);
+        gl.bindBuffer(gl.ARRAY_BUFFER, c.posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, c.pos, gl.DYNAMIC_DRAW);
+      }
+    }
   }
 
   gl.clear(gl.COLOR_BUFFER_BIT);
@@ -640,7 +704,19 @@ function render(now) {
     const gc = groups[state.selected.group].color;
     gl.uniform3f(LN.uColor, gc[0], gc[1], gc[2]);
     gl.uniform1f(LN.uAlpha, 0.55);
-    gl.drawArrays(gl.LINE_LOOP, 0, selOrbitCount);
+    gl.drawArrays(selOrbitStrip ? gl.LINE_STRIP : gl.LINE_LOOP, 0, selOrbitCount);
+  }
+  // spacecraft trajectories
+  if (state.showCraft) {
+    for (let i = 0; i < spacecraft.length; i++) {
+      const c = spacecraft[i];
+      gl.bindBuffer(gl.ARRAY_BUFFER, c.trajBuf);
+      gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
+      const sel = state.selCraft === i;
+      gl.uniform3f(LN.uColor, 0.72, 0.86, 1.0);
+      gl.uniform1f(LN.uAlpha, sel ? 0.65 : 0.2);
+      gl.drawArrays(gl.LINE_STRIP, 0, c.n);
+    }
   }
 
   /* ---- points ---- */
@@ -681,6 +757,27 @@ function render(now) {
     gl.drawArrays(gl.POINTS, 0, g.count);
   }
 
+  // PHA highlight overlay (orange, on top of the normal points)
+  if (state.showPHA && phaList.length) {
+    if (phaPos.length !== phaList.length * 3) phaPos = new Float32Array(phaList.length * 3);
+    for (let i = 0; i < phaList.length; i++) {
+      const g = groups[phaList[i].gi], k = phaList[i].k;
+      phaPos[i * 3] = g.pos[k * 3]; phaPos[i * 3 + 1] = g.pos[k * 3 + 1]; phaPos[i * 3 + 2] = g.pos[k * 3 + 2];
+    }
+    if (!phaPosBuf) phaPosBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, phaPosBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, phaPos, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(PT.aPos);
+    gl.vertexAttribPointer(PT.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.disableVertexAttribArray(PT.aSize); gl.vertexAttrib1f(PT.aSize, 0.05);
+    gl.disableVertexAttribArray(PT.aPhase); gl.vertexAttrib1f(PT.aPhase, 0);
+    gl.uniform1f(PT.uMinPx, 3.2 * dpr);
+    gl.uniform1f(PT.uMaxPx, 13 * dpr);
+    gl.uniform3f(PT.uColor, 1.0, 0.5, 0.16);
+    gl.uniform1f(PT.uAlpha, 0.92);
+    gl.drawArrays(gl.POINTS, 0, phaList.length);
+  }
+
   // planets
   gl.uniform1f(PT.uMinPx, 2.5 * dpr);
   gl.uniform1f(PT.uMaxPx, 26 * dpr);
@@ -698,6 +795,19 @@ function render(now) {
   gl.uniform1f(PT.uAlpha, 1.0);
   bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
   gl.drawArrays(gl.POINTS, 0, 1);
+
+  // spacecraft markers
+  if (state.showCraft) {
+    gl.uniform1f(PT.uMinPx, 3.5 * dpr);
+    gl.uniform1f(PT.uMaxPx, 11 * dpr);
+    gl.uniform3f(PT.uColor, 0.9, 0.97, 1.0);
+    gl.uniform1f(PT.uAlpha, 1.0);
+    for (const c of spacecraft) {
+      if (!c.inRange) continue;
+      bindPointAttrs(c.posBuf, c.sizeBuf, null, 0);
+      gl.drawArrays(gl.POINTS, 0, 1);
+    }
+  }
 
   updateOverlays(pixScale);
   updateHUD();
@@ -730,6 +840,14 @@ function buildDwarfList() {
     }
   }
 }
+function buildPhaList() {
+  phaList.length = 0;
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    for (let k = 0; k < g.count; k++) if (g.meta[k].pha) phaList.push({ gi, k });
+  }
+}
+let phaPos = new Float32Array(0), phaPosBuf = null;
 function updateOverlays(pixScale) {
   // sun halo
   const sp = project(0, 0, 0);
@@ -771,24 +889,49 @@ function updateOverlays(pixScale) {
     d.el.style.opacity = show ? "0.85" : "0";
     if (show) d.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
-  // selection marker
+  // spacecraft labels (always-on when in range)
+  for (const c of spacecraft) {
+    if (!c.labelEl) {
+      c.labelEl = document.createElement("div");
+      c.labelEl.className = "pl-label craft-label";
+      c.labelEl.textContent = c.name;
+      labelsEl.appendChild(c.labelEl);
+    }
+    if (!state.showCraft || !c.inRange) { c.labelEl.style.opacity = "0"; continue; }
+    const p = project(c.pos[0], c.pos[1], c.pos[2]);
+    const show = p && p[0] > -60 && p[0] < cssW + 60 && p[1] > -20 && p[1] < cssH + 20;
+    c.labelEl.style.opacity = show ? "0.92" : "0";
+    if (show) c.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+  }
+  // selection marker (asteroid or spacecraft) + live distance readout
+  let selPos = null, selName = "";
   if (state.selected) {
-    const g = groups[state.selected.group];
-    const k = state.selected.index;
-    const p = project(g.pos[k * 3], g.pos[k * 3 + 1], g.pos[k * 3 + 2]);
+    const g = groups[state.selected.group], k = state.selected.index;
+    selPos = [g.pos[k * 3], g.pos[k * 3 + 1], g.pos[k * 3 + 2]];
+    selName = g.meta[k].name;
+    $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
+  } else if (state.selCraft != null) {
+    const c = spacecraft[state.selCraft];
+    if (c && c.inRange) {
+      selPos = [c.pos[0], c.pos[1], c.pos[2]];
+      selName = c.name;
+      $("craft-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(2) + " au";
+    } else {
+      $("craft-r").textContent = "outside data range";
+    }
+  }
+  if (selPos) {
     if (!selMarkerEl) {
       selMarkerEl = document.createElement("div");
       selMarkerEl.className = "pl-label sel-marker";
       labelsEl.appendChild(selMarkerEl);
     }
-    selMarkerEl.textContent = g.meta[k].name;
+    const p = project(selPos[0], selPos[1], selPos[2]);
+    selMarkerEl.textContent = selName;
     if (p) {
       selMarkerEl.style.opacity = "1";
       selMarkerEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
     } else selMarkerEl.style.opacity = "0";
-    // live distance readout
-    const r = Math.hypot(g.pos[k * 3], g.pos[k * 3 + 1], g.pos[k * 3 + 2]);
-    $("info-r").textContent = r.toFixed(3) + " au";
   } else if (selMarkerEl) {
     selMarkerEl.style.opacity = "0";
   }
@@ -971,6 +1114,109 @@ function ingestComets(resp) {
   return rows.length;
 }
 
+// Interstellar visitors: e > 1, so the orbit is an open hyperbola and the body
+// never returns. Same q/tp → record conversion as comets, but a is negative;
+// the group is flagged so the propagator uses hyperbolic Kepler.
+function ingestInterstellar(resp) {
+  if (!resp || !Array.isArray(resp.fields) || !Array.isArray(resp.data)) return 0;
+  const ix = {};
+  resp.fields.forEach((f, k) => (ix[f] = k));
+  for (const f of ["pdes", "e", "i", "om", "w", "q", "tp"]) if (!(f in ix)) return 0;
+  const num = (v) => (v == null || v === "" ? NaN : +v);
+
+  const rows = [];
+  for (const row of resp.data) {
+    const pdes = row[ix.pdes];
+    if (pdes == null || seen.has(pdes)) continue;
+    const e = num(row[ix.e]), q = num(row[ix.q]), tp = num(row[ix.tp]);
+    const inc = num(row[ix.i]), om = num(row[ix.om]), w = num(row[ix.w]);
+    if (!(q > 0) || !(e > 1) || !isFinite(inc) || !isFinite(om) || !isFinite(w) || !isFinite(tp)) continue;
+    seen.add(pdes);
+    const diam = num(row[ix.diameter]);
+    rows.push({
+      pdes, name: (row[ix.name] || "").trim() || pdes, cls: "ISO",
+      a: q / (1 - e), e, inc, om, w, tp,
+      diam: isFinite(diam) ? diam : NaN, rot: num(row[ix.rot_per]),
+      albedo: NaN, spec: "", pha: false, moid: NaN,
+    });
+  }
+  if (!rows.length) return 0;
+
+  const g = groups[GI.ISO];
+  g.hyperbolic = true;
+  const n0 = g.count, n1 = n0 + rows.length;
+  const el = new Float32Array(n1 * STRIDE); el.set(g.el);
+  const pos = new Float32Array(n1 * 3); pos.set(g.pos);
+  const sizes = new Float32Array(n1); sizes.set(g.sizes);
+  const Pb = new Float64Array(6);
+  rows.forEach((r, j) => {
+    const k = n0 + j, o = k * STRIDE;
+    const aAbs = Math.abs(r.a);
+    perifocalBasis(r.w * DEG, r.om * DEG, r.inc * DEG, Pb);
+    el[o] = r.a;                                  // negative for hyperbola
+    el[o + 1] = r.e;
+    el[o + 2] = aAbs * Math.sqrt(r.e * r.e - 1);  // b
+    el[o + 3] = 0;                                // M = 0 at perihelion
+    el[o + 4] = GAUSS_K / Math.pow(aAbs, 1.5);    // rad/day
+    el[o + 5] = r.tp - J2000;                     // reference epoch = perihelion passage
+    el[o + 6] = Pb[0]; el[o + 7] = Pb[1]; el[o + 8] = Pb[2];
+    el[o + 9] = Pb[3]; el[o + 10] = Pb[4]; el[o + 11] = Pb[5];
+    sizes[k] = 0.07;
+    g.meta.push(makeMeta(r, "i"));
+  });
+  g.el = el; g.pos = pos; g.sizes = sizes; g.count = n1;
+  if (!g.posBuf) g.posBuf = gl.createBuffer();
+  if (g.sizeBuf) gl.deleteBuffer(g.sizeBuf);
+  g.sizeBuf = makeBuffer(sizes);
+  g.dirty = true;
+  state.totalLoaded += rows.length;
+  state.needFullUpdate = true;
+  renderLegend();
+  return rows.length;
+}
+
+// Spacecraft trajectories from Horizons → flat [jd,x,y,z] arrays for interp.
+function ingestSpacecraft(list) {
+  spacecraft.length = 0;
+  if (!Array.isArray(list)) return 0;
+  for (const c of list) {
+    if (!c || !Array.isArray(c.pts || c.points)) continue;
+    const raw = c.points || c.pts;
+    const n = raw.length;
+    if (!n) continue;
+    const jd = new Float64Array(n);
+    const verts = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      jd[i] = raw[i][0];
+      verts[i * 3] = raw[i][1]; verts[i * 3 + 1] = raw[i][2]; verts[i * 3 + 2] = raw[i][3];
+    }
+    spacecraft.push({
+      name: c.name, jd, verts, n,
+      pos: new Float32Array(3),
+      inRange: false,
+      trajBuf: makeBuffer(verts),
+      posBuf: makeBuffer(new Float32Array(3), gl.DYNAMIC_DRAW),
+      sizeBuf: makeBuffer(new Float32Array([0.09])),
+      labelEl: null,
+    });
+  }
+  return spacecraft.length;
+}
+
+// Linear-interpolate a craft's heliocentric position at sim JD.
+function craftPositionAt(c, jd) {
+  if (jd < c.jd[0] || jd > c.jd[c.n - 1]) { c.inRange = false; return; }
+  c.inRange = true;
+  let lo = 0, hi = c.n - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= jd) lo = mid; else hi = mid; }
+  const t0 = c.jd[lo], t1 = c.jd[hi];
+  const f = t1 > t0 ? (jd - t0) / (t1 - t0) : 0;
+  for (let d = 0; d < 3; d++) {
+    const a = c.verts[lo * 3 + d], b = c.verts[hi * 3 + d];
+    c.pos[d] = a + (b - a) * f;
+  }
+}
+
 let loadedOnce = false;
 async function loadAsteroids() {
   const fill = $("loader-fill");
@@ -986,8 +1232,12 @@ async function loadAsteroids() {
     let added = 0;
     for (const q of snap.queries || []) added += ingest(q);
     added += ingestComets(snap.comets);
+    added += ingestInterstellar(snap.interstellar);
     if (!added) throw new Error("snapshot contained no usable records");
     buildDwarfList();
+    buildPhaList();
+    ingestSpacecraft(snap.spacecraft);
+    renderLegend();
     fill.style.width = "100%";
     const total = +snap.totalKnown;
     if (total > 0) $("stat-known").textContent = total.toLocaleString("en-US");
@@ -1121,6 +1371,28 @@ function renderLegend() {
     });
     ul.appendChild(li);
   });
+
+  // overlay toggles (not populations)
+  const overlays = [
+    { key: "pha", icon: "⚠", label: "Highlight PHAs", count: phaList.length, css: "#ff7e2a",
+      get on() { return state.showPHA; },
+      toggle() { state.showPHA = !state.showPHA; } },
+    { key: "craft", icon: "🛰", label: "Spacecraft", count: spacecraft.length, css: "#bcd6ff",
+      get on() { return state.showCraft; },
+      toggle() { state.showCraft = !state.showCraft; if (!state.showCraft && state.selCraft != null) clearSelection(); } },
+  ];
+  for (const o of overlays) {
+    if (!o.count) continue;
+    const li = document.createElement("li");
+    li.className = "legend-toggle";
+    if (!o.on) li.classList.add("off");
+    li.innerHTML =
+      `<span class="dot" style="background:${o.css};box-shadow:0 0 8px ${o.css}"></span>` +
+      `<span class="lname">${o.label}</span>` +
+      `<span class="lcount">${o.count.toLocaleString("en-US")}</span>`;
+    li.addEventListener("click", () => { o.toggle(); li.classList.toggle("off", !o.on); });
+    ul.appendChild(li);
+  }
 }
 
 /* ============================================================
@@ -1136,12 +1408,17 @@ function selectObject(gi, k) {
   const g = groups[gi];
   const m = g.meta[k];
   state.selected = { group: gi, index: k };
+  state.selCraft = null;
+  $("info-craft").hidden = true;
+  $("info-grid").hidden = false;
+  $("info-preview").hidden = false;
   const o = k * STRIDE, el = g.el;
   buildSelectedOrbit({
     a: el[o], e: el[o + 1], b: el[o + 2],
     Px: el[o + 6], Py: el[o + 7], Pz: el[o + 8],
     Qx: el[o + 9], Qy: el[o + 10], Qz: el[o + 11],
   });
+  const hyper = m.e >= 1;
   $("info-name").textContent = m.name;
   $("info-class").textContent =
     (m.dwarf ? "Dwarf planet · " : "") + (CLASS_NAMES[m.cls] || m.cls || "asteroid");
@@ -1161,10 +1438,10 @@ function selectObject(gi, k) {
   }
 
   // orbital
-  $("info-a").textContent = m.a.toFixed(3) + " au";
+  $("info-a").textContent = hyper ? "—" : m.a.toFixed(3) + " au";
   $("info-e").textContent = m.e.toFixed(3);
   $("info-i").textContent = m.i.toFixed(1) + "°";
-  $("info-per").textContent = formatPeriod(Math.pow(m.a, 1.5));
+  $("info-per").textContent = hyper ? "unbound · escaping" : formatPeriod(Math.pow(m.a, 1.5));
 
   // diameter: measured if we have it, else estimated from absolute magnitude
   let dTxt = "—", dLabel = "diameter";
@@ -1178,7 +1455,7 @@ function selectObject(gi, k) {
   $("info-d-label").textContent = dLabel;
 
   // optional rows — hidden when the datum is missing
-  const showQ = gi === GI.NEO || gi === GI.MCA || m.kind === "c";
+  const showQ = gi === GI.NEO || gi === GI.MCA || gi === GI.ISO || m.kind === "c";
   setRow("info-row-q", "info-q", showQ ? m.q.toFixed(3) + " au" : null);
   setRow("info-row-albedo", "info-albedo", isFinite(m.albedo) ? m.albedo.toFixed(2) : null);
   setRow("info-row-rot", "info-rot", isFinite(m.rot) && m.rot > 0 ? formatHours(m.rot) : null);
@@ -1192,8 +1469,45 @@ function selectObject(gi, k) {
   renderPreview(m);
   $("panel-info").hidden = false;
 }
+function selectCraft(i) {
+  const c = spacecraft[i];
+  if (!c) return;
+  state.selCraft = i;
+  state.selected = null;
+  selOrbitCount = 0;
+  stopPreview();
+  const info = SPACECRAFT_INFO[c.name] || {};
+  $("info-name").textContent = c.name;
+  $("info-class").textContent = "Robotic spacecraft" + (info.op ? " · " + info.op : "");
+  $("info-badges").innerHTML = `<span class="badge badge-craft">🛰 Spacecraft</span>`;
+  $("info-preview").hidden = true;
+  $("info-grid").hidden = true;
+  $("info-link").hidden = true;
+  $("info-craft").hidden = false;
+  $("craft-note").textContent = info.note || "";
+  $("craft-launch").textContent = info.launch || "—";
+  // current speed from the bracketing trajectory segment (1 au/day = 1731.46 km/s)
+  let v = "—";
+  craftPositionAt(c, state.simJD);
+  if (c.inRange && c.n > 1) {
+    let lo = 0, hi = c.n - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= state.simJD) lo = mid; else hi = mid; }
+    const dt = c.jd[hi] - c.jd[lo];
+    if (dt > 0) {
+      const dx = c.verts[hi * 3] - c.verts[lo * 3];
+      const dy = c.verts[hi * 3 + 1] - c.verts[lo * 3 + 1];
+      const dz = c.verts[hi * 3 + 2] - c.verts[lo * 3 + 2];
+      v = (Math.hypot(dx, dy, dz) / dt * 1731.46).toFixed(1) + " km/s";
+    }
+  }
+  $("craft-v").textContent = v;
+  $("craft-r").textContent = c.inRange
+    ? Math.hypot(c.pos[0], c.pos[1], c.pos[2]).toFixed(2) + " au" : "outside data range";
+  $("panel-info").hidden = false;
+}
 function clearSelection() {
   state.selected = null;
+  state.selCraft = null;
   selOrbitCount = 0;
   stopPreview();
   $("panel-info").hidden = true;
@@ -1382,7 +1696,19 @@ function pickAt(x, y) {
       if (d < bestD) { bestD = d; best = [gi, k]; }
     }
   }
-  if (best) selectObject(best[0], best[1]);
+  let bestCraft = -1;
+  if (state.showCraft) {
+    for (let i = 0; i < spacecraft.length; i++) {
+      const c = spacecraft[i];
+      if (!c.inRange) continue;
+      const p = project(c.pos[0], c.pos[1], c.pos[2]);
+      if (!p) continue;
+      const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; bestCraft = i; best = null; }
+    }
+  }
+  if (bestCraft >= 0) selectCraft(bestCraft);
+  else if (best) selectObject(best[0], best[1]);
   else clearSelection();
 }
 
