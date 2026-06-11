@@ -225,7 +225,7 @@ html, body {
 .panel-foot { margin-top: 10px; font-size: 10.5px; color: var(--ink-dim); letter-spacing: 0.04em; }
 
 /* ---- legend ---- */
-#panel-legend { right: 16px; top: 86px; width: 250px; }
+#panel-legend { right: 16px; top: 86px; width: 250px; max-height: calc(100vh - 210px); overflow-y: auto; scrollbar-width: thin; }
 #legend-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
 #legend-list li {
   display: flex;
@@ -239,7 +239,9 @@ html, body {
   font-size: 13.5px;
 }
 #legend-list li:hover { background: rgba(140, 165, 220, 0.1); }
-#legend-list li.off { opacity: 0.32; }
+#legend-list li.off .dot,
+#legend-list li.off .lname,
+#legend-list li.off .lcount { opacity: 0.32; }
 #legend-list li.off .dot { box-shadow: none; }
 #legend-list .dot {
   width: 11px;
@@ -247,8 +249,29 @@ html, body {
   border-radius: 50%;
   flex: none;
 }
+#legend-list li { flex-wrap: wrap; }
 #legend-list .lname { flex: 1; }
 #legend-list .lcount { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+#legend-list .linfo {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+#legend-list .linfo:hover { color: var(--accent); opacity: 1; }
+#legend-list .ldesc {
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  padding: 4px 4px 2px 21px;
+  cursor: default;
+}
+#legend-list .ldesc[hidden] { display: none; }
 
 /* ---- close approaches ---- */
 #panel-cad { right: 16px; top: 480px; width: 300px; max-height: min(38vh, 320px); display: flex; flex-direction: column; }

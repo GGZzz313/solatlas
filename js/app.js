@@ -141,15 +141,24 @@ if (typeof document !== "undefined") (() => {
 const DATA_URL = "data/asteroids.json";
 
 const GROUPS = [
-  { key: "NEO", label: "Near-Earth", color: [1.0, 0.42, 0.42], css: "#ff6b6b" },
-  { key: "MCA", label: "Mars-crossers", color: [1.0, 0.66, 0.30], css: "#ffa94d" },
-  { key: "MBA", label: "Main belt", color: [1.0, 0.83, 0.47], css: "#ffd479" },
-  { key: "TJN", label: "Jupiter Trojans", color: [0.37, 0.92, 0.83], css: "#5eead4" },
-  { key: "CEN", label: "Centaurs", color: [0.75, 0.52, 0.99], css: "#c084fc" },
-  { key: "TNO", label: "Trans-Neptunian", color: [0.49, 0.65, 1.0], css: "#7da7ff" },
-  { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff" },
-  { key: "ISO", label: "Interstellar", color: [1.0, 0.42, 0.85], css: "#ff6bd9" },
-  { key: "OTH", label: "Other", color: [0.58, 0.64, 0.72], css: "#94a3b8" },
+  { key: "NEO", label: "Near-Earth", color: [1.0, 0.42, 0.42], css: "#ff6b6b",
+    desc: "Asteroids whose orbits come within 1.3 au of the Sun — the Atira, Aten, Apollo and Amor classes. Some pass close to Earth." },
+  { key: "MCA", label: "Mars-crossers", color: [1.0, 0.66, 0.30], css: "#ffa94d",
+    desc: "Asteroids whose orbits cross the orbit of Mars." },
+  { key: "MBA", label: "Main belt", color: [1.0, 0.83, 0.47], css: "#ffd479",
+    desc: "The classical asteroid belt between Mars and Jupiter, roughly 2.0–3.3 au from the Sun. Home to most known asteroids." },
+  { key: "TJN", label: "Jupiter Trojans", color: [0.37, 0.92, 0.83], css: "#5eead4",
+    desc: "Asteroids sharing Jupiter's orbit, held in two camps 60° ahead of and behind the planet (the L4 / L5 Lagrange points)." },
+  { key: "CEN", label: "Centaurs", color: [0.75, 0.52, 0.99], css: "#c084fc",
+    desc: "Icy bodies on unstable orbits between Jupiter and Neptune — part asteroid, part comet." },
+  { key: "TNO", label: "Trans-Neptunian", color: [0.49, 0.65, 1.0], css: "#7da7ff",
+    desc: "Everything orbiting beyond Neptune: the Kuiper Belt, the scattered disk, and dwarf planets like Pluto and Eris." },
+  { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff",
+    desc: "Periodic comets on closed orbits — icy nuclei that grow comas and tails when they near the Sun." },
+  { key: "ISO", label: "Interstellar", color: [1.0, 0.42, 0.85], css: "#ff6bd9",
+    desc: "Visitors from other star systems on unbound hyperbolic paths — they pass through once and never return." },
+  { key: "OTH", label: "Other", color: [0.58, 0.64, 0.72], css: "#94a3b8",
+    desc: "Objects that don't fit any of the classes above." },
 ];
 // key → group index, so we don't hard-code positions when buckets change.
 const GI = Object.fromEntries(GROUPS.map((g, i) => [g.key, i]));
@@ -1494,44 +1503,60 @@ function renderSentry(sentry) {
 /* ============================================================
    8. Legend / filters
    ============================================================ */
+/* One legend row: dot, label, count, an ⓘ that expands a description,
+   and the row-click visibility toggle. */
+function legendRow(label, count, css, desc, onToggle, isOn) {
+  const li = document.createElement("li");
+  if (!isOn) li.classList.add("off");
+  li.innerHTML =
+    `<span class="dot" style="background:${css};box-shadow:0 0 8px ${css}"></span>` +
+    `<span class="lname">${label}</span>` +
+    `<span class="lcount">${count.toLocaleString("en-US")}</span>` +
+    `<button class="linfo" aria-label="About ${label}" title="What is this?">ⓘ</button>` +
+    `<p class="ldesc" hidden></p>`;
+  li.querySelector(".ldesc").textContent = desc;
+  li.addEventListener("click", (ev) => {
+    if (ev.target.closest(".linfo")) {
+      const d = li.querySelector(".ldesc");
+      d.hidden = !d.hidden;
+      return;
+    }
+    if (ev.target.closest(".ldesc")) return;   // reading isn't toggling
+    onToggle(li);
+  });
+  return li;
+}
+
 function renderLegend() {
   const ul = $("legend-list");
   ul.innerHTML = "";
   groups.forEach((g, gi) => {
     if (!g.count) return;
-    const li = document.createElement("li");
-    if (!g.visible) li.classList.add("off");
-    li.innerHTML =
-      `<span class="dot" style="background:${g.css};box-shadow:0 0 8px ${g.css}"></span>` +
-      `<span class="lname">${g.label}</span>` +
-      `<span class="lcount">${g.count.toLocaleString("en-US")}</span>`;
-    li.addEventListener("click", () => {
+    ul.appendChild(legendRow(g.label, g.count, g.css, g.desc, (li) => {
       g.visible = !g.visible;
       li.classList.toggle("off", !g.visible);
       if (!g.visible && state.selected && state.selected.group === gi) clearSelection();
-    });
-    ul.appendChild(li);
+    }, g.visible));
   });
 
   // overlay toggles (not populations)
   const overlays = [
-    { key: "pha", icon: "⚠", label: "Highlight PHAs", count: phaList.length, css: "#ff7e2a",
+    { label: "Highlight PHAs", count: phaList.length, css: "#ff7e2a",
+      desc: "Potentially Hazardous Asteroids — larger than ~140 m with orbits passing within 0.05 au (~19 lunar distances) of Earth's orbit. Lights them up in orange.",
       get on() { return state.showPHA; },
       toggle() { state.showPHA = !state.showPHA; } },
-    { key: "moons", icon: "◐", label: "Moons", count: moons.count, css: "#c7d2e8",
+    { label: "Moons", count: moons.count, css: "#c7d2e8",
+      desc: "Every planetary satellite in JPL Horizons, orbiting its parent planet. Click a planet and zoom in to explore its moon system.",
       get on() { return moons.visible; },
       toggle() { moons.visible = !moons.visible; if (!moons.visible && state.selMoon != null) clearSelection(); } },
   ];
   for (const o of overlays) {
     if (!o.count) continue;
-    const li = document.createElement("li");
-    li.className = "legend-toggle";
-    if (!o.on) li.classList.add("off");
-    li.innerHTML =
-      `<span class="dot" style="background:${o.css};box-shadow:0 0 8px ${o.css}"></span>` +
-      `<span class="lname">${o.label}</span>` +
-      `<span class="lcount">${o.count.toLocaleString("en-US")}</span>`;
-    li.addEventListener("click", () => { o.toggle(); li.classList.toggle("off", !o.on); });
+    const li = legendRow(o.label, o.count, o.css, o.desc, (el) => {
+      o.toggle();
+      el.classList.toggle("off", !o.on);
+    }, o.on);
+    li.classList.add("legend-toggle");
     ul.appendChild(li);
   }
 }
