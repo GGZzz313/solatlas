@@ -2047,12 +2047,13 @@ canvas.addEventListener("wheel", (ev) => {
   state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011), minDist(), 240);
   dismissHint();
 }, { passive: false });
-canvas.addEventListener("dblclick", () => {
-  state.focus = null;     // double-click returns the camera to the Sun
+function resetToSun() {
+  state.focus = null;
   retarget();
   Object.assign(state.cam, { tYaw: -1.1, tPitch: 0.55, tDist: 7.8 });
   setTopDown(false, true);
-});
+}
+canvas.addEventListener("dblclick", resetToSun);
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 function minDist() { return state.focus ? 5e-5 : 0.18; }
 
@@ -2114,6 +2115,7 @@ function setTopDown(on, skipCamera) {
     state.cam.tPitch = state.savedPitch;
   }
 }
+$("fab-sun").addEventListener("click", resetToSun);
 $("fab-view").addEventListener("click", () => setTopDown(!state.topDown));
 $("retry-btn").addEventListener("click", loadAsteroids);
 
