@@ -20,32 +20,55 @@
 
 <!-- ======================= Loading overlay ======================= -->
 <div id="loader">
-  <div class="loader-orbits" aria-hidden="true">
-    <span class="lo lo1"></span><span class="lo lo2"></span><span class="lo lo3"></span>
-    <span class="lo-sun"></span>
-  </div>
-  <h1 class="loader-title">Asteroid&nbsp;Atlas</h1>
-  <p class="loader-sub">loading NASA/JPL Small-Body Database snapshot…</p>
-  <div class="loader-bar"><div id="loader-fill"></div></div>
-  <p id="loader-status">initializing</p>
-  <div id="loader-error" hidden>
-    <p id="loader-error-msg">Could not reach the NASA/JPL API.</p>
-    <button id="retry-btn" class="btn-accent">Retry</button>
+  <div class="loader-stars" aria-hidden="true"></div>
+  <div class="loader-stars ls2" aria-hidden="true"></div>
+  <div class="loader-glow" aria-hidden="true"></div>
+  <div class="loader-core">
+    <div class="loader-orbits" aria-hidden="true">
+      <span class="lo lo1"></span><span class="lo lo2"></span><span class="lo lo3"></span>
+      <span class="lo-sun"></span>
+    </div>
+    <p class="loader-eyebrow">NASA / JPL · Small-Body Database</p>
+    <h1 class="loader-title">Asteroid&nbsp;Atlas</h1>
+    <p class="loader-sub">every charted world, propagated live in your browser</p>
+    <div class="loader-bar"><div id="loader-fill"></div></div>
+    <p id="loader-status">initializing</p>
+    <div id="loader-error" hidden>
+      <p id="loader-error-msg">Could not reach the NASA/JPL API.</p>
+      <button id="retry-btn" class="btn-accent">Retry</button>
+    </div>
   </div>
 </div>
 
 <!-- ======================= Header ======================= -->
 <header id="hud-top">
   <div class="brand">
-    <h1>Asteroid <em>Atlas</em></h1>
-    <p class="tagline">live orbital data · NASA/JPL Small-Body Database</p>
+    <svg class="brand-mark" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="bm-grad" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#c4b5fd"/>
+        </linearGradient>
+      </defs>
+      <ellipse cx="22" cy="22" rx="19" ry="8.5" stroke="url(#bm-grad)" stroke-width="1.4" opacity="0.85" transform="rotate(-24 22 22)"/>
+      <ellipse cx="22" cy="22" rx="13" ry="5.5" stroke="url(#bm-grad)" stroke-width="1" opacity="0.4" transform="rotate(-24 22 22)"/>
+      <circle cx="22" cy="22" r="3.4" fill="#ffd479"/>
+      <circle class="bm-comet" cx="36.5" cy="13.5" r="2" fill="#7dd3fc"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Asteroid <em>Atlas</em></h1>
+      <p class="tagline"><span class="live-dot" aria-hidden="true"></span>live orbital data · NASA/JPL Small-Body Database</p>
+    </div>
   </div>
   <div class="stats">
-    <div class="stat"><span id="stat-count" class="stat-num">0</span><span class="stat-label">asteroids&nbsp;mapped</span></div>
+    <div class="stat"><span id="stat-count" class="stat-num">0</span><span class="stat-label">objects&nbsp;mapped</span></div>
     <div class="stat hide-sm"><span id="stat-known" class="stat-num dim">1.5M+</span><span class="stat-label">known&nbsp;to&nbsp;date</span></div>
   </div>
   <div class="search-wrap">
-    <input id="search" type="search" placeholder="Search — try “Apophis”, “Ceres”, “Bennu”…" autocomplete="off" spellcheck="false">
+    <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/>
+    </svg>
+    <input id="search" type="search" placeholder="Search Apophis, Ceres, Europa…" autocomplete="off" spellcheck="false">
+    <kbd class="search-kbd" aria-hidden="true">/</kbd>
     <ul id="search-results" hidden></ul>
   </div>
 </header>

@@ -2021,6 +2021,13 @@ searchEl.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape") searchEl.blur();
 });
+window.addEventListener("keydown", (ev) => {
+  if (ev.key === "/" && document.activeElement !== searchEl &&
+      !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+    ev.preventDefault();
+    searchEl.focus();
+  }
+});
 
 /* ============================================================
    10. Camera input — mouse / touch / wheel

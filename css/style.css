@@ -99,24 +99,92 @@ html, body {
 }
 
 /* ============================================================
-   Loader
+   Loader — cinematic launch sequence
    ============================================================ */
 #loader {
   position: fixed;
   inset: 0;
   z-index: 60;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  overflow: hidden;
   background:
-    radial-gradient(100% 80% at 50% 30%, #0c1330 0%, #05070f 70%);
-  transition: opacity 0.7s ease, visibility 0.7s;
+    radial-gradient(120% 90% at 50% 25%, #0c1330 0%, #070b1c 45%, #03050c 100%);
+  transition: opacity 0.9s ease, visibility 0.9s, filter 0.9s ease;
 }
-#loader.done { opacity: 0; visibility: hidden; }
+#loader.done { opacity: 0; visibility: hidden; filter: blur(6px); }
+#loader.done .loader-core { transform: scale(1.05); }
 
-.loader-orbits { position: relative; width: 140px; height: 140px; }
+/* parallax starfield: two drifting tiled layers */
+.loader-stars {
+  position: absolute;
+  inset: -120px;
+  background-image:
+    radial-gradient(1.2px 1.2px at 22px 34px, rgba(232, 237, 247, 0.9), transparent 100%),
+    radial-gradient(1px 1px at 120px 86px, rgba(125, 211, 252, 0.8), transparent 100%),
+    radial-gradient(1.4px 1.4px at 196px 150px, rgba(232, 237, 247, 0.7), transparent 100%),
+    radial-gradient(1px 1px at 64px 188px, rgba(196, 181, 253, 0.7), transparent 100%),
+    radial-gradient(0.8px 0.8px at 156px 22px, rgba(232, 237, 247, 0.55), transparent 100%),
+    radial-gradient(1px 1px at 230px 100px, rgba(232, 237, 247, 0.5), transparent 100%);
+  background-size: 260px 240px;
+  animation: star-drift 90s linear infinite;
+  opacity: 0.7;
+}
+.loader-stars.ls2 {
+  background-size: 420px 380px;
+  animation-duration: 160s;
+  animation-direction: reverse;
+  opacity: 0.45;
+}
+@keyframes star-drift { to { transform: translate3d(-260px, 120px, 0); } }
+
+/* soft nebula glow behind the core */
+.loader-glow {
+  position: absolute;
+  width: min(720px, 90vw);
+  height: min(720px, 90vw);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 38%, rgba(125, 211, 252, 0.12) 0%, transparent 55%),
+    radial-gradient(circle at 60% 60%, rgba(196, 181, 253, 0.1) 0%, transparent 55%);
+  filter: blur(10px);
+  animation: glow-breathe 7s ease-in-out infinite;
+}
+@keyframes glow-breathe { 50% { transform: scale(1.07); opacity: 0.85; } }
+
+.loader-core {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  transition: transform 0.9s ease;
+}
+.loader-core > * { animation: rise-in 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.loader-core > :nth-child(2) { animation-delay: 0.12s; }
+.loader-core > :nth-child(3) { animation-delay: 0.22s; }
+.loader-core > :nth-child(4) { animation-delay: 0.34s; }
+.loader-core > :nth-child(5) { animation-delay: 0.46s; }
+.loader-core > :nth-child(6) { animation-delay: 0.55s; }
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(18px); }
+}
+
+.loader-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+  text-shadow: 0 0 18px rgba(125, 211, 252, 0.45);
+  margin-top: 6px;
+  padding-left: 0.42em; /* optically recenter tracked text */
+}
+
+.loader-orbits { position: relative; width: 132px; height: 132px; margin-bottom: 4px; }
 .lo {
   position: absolute;
   inset: 0;
@@ -151,32 +219,77 @@ html, body {
 @keyframes breathe { 50% { transform: scale(1.12); } }
 
 .loader-title {
-  font-size: clamp(28px, 6vw, 44px);
+  font-size: clamp(38px, 8vw, 72px);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  background: linear-gradient(92deg, #e8edf7 10%, var(--accent) 55%, var(--accent2) 95%);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  text-align: center;
+  padding-left: 0.12em; /* optically recenter tracked text */
+  background: linear-gradient(110deg,
+    #e8edf7 0%, var(--accent) 32%, #ffffff 50%, var(--accent2) 68%, #e8edf7 100%);
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: rise-in 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+             title-shine 5.5s ease-in-out 0.8s infinite;
+  filter: drop-shadow(0 0 26px rgba(125, 211, 252, 0.22));
 }
-.loader-sub { color: var(--ink-dim); font-size: 14px; }
+@keyframes title-shine {
+  0% { background-position: 110% 0; }
+  45%, 100% { background-position: -60% 0; }
+}
+.loader-sub {
+  color: var(--ink-dim);
+  font-size: clamp(13px, 1.8vw, 15.5px);
+  letter-spacing: 0.06em;
+  text-align: center;
+}
 .loader-bar {
-  width: min(320px, 70vw);
-  height: 4px;
+  width: min(380px, 74vw);
+  height: 3px;
   border-radius: 99px;
-  background: rgba(140, 165, 220, 0.15);
-  overflow: hidden;
+  background: rgba(140, 165, 220, 0.14);
+  overflow: visible;
+  margin-top: 10px;
 }
 #loader-fill {
+  position: relative;
   height: 100%;
   width: 2%;
   border-radius: 99px;
-  background: linear-gradient(90deg, var(--accent), var(--accent2));
-  box-shadow: var(--glow);
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.25), var(--accent) 70%, #fff);
   transition: width 0.45s ease;
 }
-#loader-status { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+#loader-fill::after {              /* comet head riding the leading edge */
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 12px 3px rgba(125, 211, 252, 0.85);
+}
+#loader-status {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+#loader-status::after {            /* telemetry cursor */
+  content: "▍";
+  margin-left: 3px;
+  color: var(--accent);
+  animation: cursor-blink 1.1s steps(1) infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
 #loader-error { text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+#loader-error[hidden] { display: none; }
 #loader-error-msg { color: #fca5a5; max-width: 320px; font-size: 14px; }
 
 .btn-accent {
@@ -397,10 +510,18 @@ html, body {
   align-items: flex-start;
   gap: 22px;
   padding: 16px 20px 26px;
-  background: linear-gradient(180deg, rgba(4, 6, 13, 0.85) 0%, rgba(4, 6, 13, 0.35) 60%, transparent 100%);
+  background:
+    radial-gradient(56% 150% at 10% 0%, rgba(125, 211, 252, 0.075) 0%, transparent 60%),
+    radial-gradient(48% 130% at 90% 0%, rgba(196, 181, 253, 0.065) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(4, 6, 13, 0.85) 0%, rgba(4, 6, 13, 0.35) 60%, transparent 100%);
   pointer-events: none;
 }
 #hud-top > * { pointer-events: auto; }
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark { width: 42px; height: 42px; flex: none; filter: drop-shadow(0 0 10px rgba(125, 211, 252, 0.35)); }
+.brand-mark .bm-comet { animation: comet-twinkle 2.6s ease-in-out infinite; }
+@keyframes comet-twinkle { 50% { opacity: 0.35; } }
 
 .brand h1 {
   font-size: clamp(19px, 2.6vw, 26px);
@@ -410,15 +531,37 @@ html, body {
 }
 .brand h1 em {
   font-style: normal;
-  background: linear-gradient(92deg, var(--accent), var(--accent2));
+  background: linear-gradient(110deg, var(--accent) 0%, #fff 50%, var(--accent2) 100%);
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: title-shine 2.6s ease-out 0.6s 1 backwards;
 }
-.tagline { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-top: 5px; }
+.tagline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-top: 6px;
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.9);
+  animation: live-pulse 2.2s ease-in-out infinite;
+}
+@keyframes live-pulse { 50% { opacity: 0.45; box-shadow: 0 0 3px rgba(74, 222, 128, 0.5); } }
 
 .stats { display: flex; gap: 22px; margin-left: 6px; }
 .stat { display: flex; flex-direction: column; }
+.stat + .stat { border-left: 1px solid var(--glass-border); padding-left: 22px; }
 .stat-num {
   font-family: var(--mono);
   font-size: clamp(17px, 2.2vw, 22px);
@@ -430,7 +573,35 @@ html, body {
 .stat-num.dim { color: var(--ink-dim); text-shadow: none; }
 .stat-label { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); margin-top: 3px; }
 
-.search-wrap { margin-left: auto; position: relative; width: min(290px, 38vw); }
+.search-wrap { margin-left: auto; position: relative; width: min(300px, 38vw); }
+.search-ico {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  color: var(--ink-dim);
+  pointer-events: none;
+  transition: color 0.2s;
+}
+.search-wrap:focus-within .search-ico { color: var(--accent); }
+.search-kbd {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--ink-dim);
+  border: 1px solid var(--glass-border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.search-wrap:focus-within .search-kbd { opacity: 0; }
 #search {
   width: 100%;
   font-family: var(--font);
@@ -439,7 +610,7 @@ html, body {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: 99px;
-  padding: 9px 16px;
+  padding: 9px 34px 9px 36px;
   outline: none;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -608,6 +779,7 @@ html, body {
    ============================================================ */
 @media (max-width: 860px) {
   #hud-top { flex-wrap: wrap; gap: 10px 16px; padding: 12px 14px 18px; }
+  .search-kbd { display: none; }
   .search-wrap { width: 100%; order: 3; margin-left: 0; }
   .hide-sm { display: none !important; }
 
@@ -652,5 +824,7 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lo, .lo-sun, .pl-label.sel-marker::after { animation: none; }
+  .lo, .lo-sun, .pl-label.sel-marker::after,
+  .loader-stars, .loader-glow, .loader-core > *, .loader-title,
+  #loader-status::after, .brand h1 em, .brand-mark .bm-comet, .live-dot { animation: none; }
 }
