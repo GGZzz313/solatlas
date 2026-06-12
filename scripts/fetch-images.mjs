@@ -28,6 +28,9 @@ const BODIES = [
   ["wild", "81P/Wild", "NASA/JPL/Stardust"],
   ["hartley", "103P/Hartley", "NASA/JPL/UMD · EPOXI"],
   ["borrelly", "19P/Borrelly", "NASA/JPL · Deep Space 1"],
+  // NOTE: img/bodies/sun.jpg is fetched separately from Wikimedia Commons
+  // ("The Sun by the Atmospheric Imaging Assembly of NASA's SDO - 20100819"),
+  // not from the Wikipedia lead image — don't add a "sun" entry here.
   // planets
   ["mercury", "Mercury_(planet)", "NASA/JHUAPL · MESSENGER"],
   ["venus", "Venus", "NASA/JPL · Mariner 10"],

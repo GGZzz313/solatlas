@@ -157,6 +157,8 @@ const GROUPS = [
     desc: "Worlds massive enough for gravity to pull them round, but which never cleared their orbits — Ceres, Pluto, Eris, Haumea, Makemake and the leading candidates." },
   { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff",
     desc: "Periodic comets on closed orbits — icy nuclei that grow comas and tails when they near the Sun." },
+  { key: "LPC", label: "Long-period comets", color: [0.42, 0.78, 0.92], css: "#6bc7eb",
+    desc: "Near-parabolic comets (e ≥ 0.995) falling in from thousands of au — the observational evidence for the Oort cloud. Select one and follow its orbit outward." },
   { key: "ISO", label: "Interstellar", color: [1.0, 0.42, 0.85], css: "#ff6bd9",
     desc: "Visitors from other star systems on unbound hyperbolic paths — they pass through once and never return." },
   { key: "OTH", label: "Other", color: [0.58, 0.64, 0.72], css: "#94a3b8",
@@ -179,7 +181,7 @@ const CLASS_NAMES = {
   MBA: "Main-belt asteroid", OMB: "Outer main-belt asteroid",
   TJN: "Jupiter trojan", CEN: "Centaur", TNO: "Trans-Neptunian object",
   AST: "Asteroid", PAA: "Parabolic asteroid", HYA: "Hyperbolic asteroid",
-  COM: "Periodic comet", ISO: "Interstellar object",
+  COM: "Periodic comet", LPC: "Long-period comet", ISO: "Interstellar object",
 };
 
 // Planet facts for the info card (diameter km, sidereal rotation hours —
@@ -301,6 +303,8 @@ const state = {
   selected: null,          // { group, index }
   selPlanet: null,         // selected planet index
   selMoon: null,           // selected moon index
+  selSun: false,           // the Sun is selected
+  showSun: true,           // Sun population (point, halo, picking)
   focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
   camEaseRate: 9,          // lowered during the launch dolly-in, restored after
   showPlanets: true,       // planets population (points, orbits, labels)
@@ -471,7 +475,10 @@ function mat4Mul(out, a, b) {
 const proj = new Float32Array(16);
 const view = new Float32Array(16);
 const vp = new Float32Array(16);
+const viewSky = new Float32Array(16);   // rotation-only view for the star dome
+const vpSky = new Float32Array(16);
 const FOV = 55 * DEG;
+const MAX_DIST = 150000;                // au — past the Oort cloud's outer edge
 
 let dpr = 1, cssW = 0, cssH = 0;
 function resize() {
@@ -536,6 +543,44 @@ const starsWarm = makeStars(450, false);
 const sunBuf = makeBuffer(new Float32Array([0, 0, 0]));
 const oneBuf = makeBuffer(new Float32Array([0]));        // phase=0
 const sunSizeBuf = makeBuffer(new Float32Array([0.45]));
+
+/* ---- Oort cloud — inferred representation, NOT data ----
+   No Oort-cloud object has ever been observed; the shell is a statistical
+   sketch at its true inferred scale: a flattened inner (Hills) cloud from
+   ~2,000–20,000 au and an isotropic outer shell to ~100,000 au, density
+   falling as ~r^-3.5. Static points (orbital periods are millions of
+   years), seeded so every visitor sees the same cloud. */
+const OORT = { count: 90000, visible: true };
+(function buildOort() {
+  const rnd = mulberry32(20260612);
+  const N = OORT.count;
+  const pos = new Float32Array(N * 3);
+  const size = new Float32Array(N);
+  // shell number-density ∝ r^-3.5 → inverse-CDF sample on r^-0.5
+  const sampleR = (r0, r1, u) => {
+    const a = 1 / Math.sqrt(r0), b = 1 / Math.sqrt(r1);
+    const s = a - u * (a - b);
+    return 1 / (s * s);
+  };
+  for (let k = 0; k < N; k++) {
+    const inner = k < N * 0.45;               // Hills cloud share
+    // inner cloud: centrally condensed (r^-3.5); outer shell: spread evenly
+    // along r so the vast sphere stays legible at full zoom-out
+    const r = inner ? sampleR(2000, 20000, rnd()) : 20000 + rnd() * 80000;
+    const zScale = inner ? 0.38 : 1;          // inner cloud hugs the ecliptic
+    let x, y, z, l2;
+    do {
+      x = rnd() * 2 - 1; y = rnd() * 2 - 1; z = rnd() * 2 - 1;
+      l2 = x * x + y * y + z * z;
+    } while (l2 > 1 || l2 < 1e-4);
+    z *= zScale;
+    const l = Math.hypot(x, y, z);
+    pos[k * 3] = (x / l) * r; pos[k * 3 + 1] = (y / l) * r; pos[k * 3 + 2] = (z / l) * r;
+    size[k] = 60 + rnd() * 160;               // representational, not physical
+  }
+  OORT.posBuf = makeBuffer(pos);
+  OORT.sizeBuf = makeBuffer(size);
+})();
 
 const planetState = PLANETS.map((p) => ({
   def: p,
@@ -645,6 +690,7 @@ function bindPointAttrs(posBuf, sizeBuf, phaseBuf, singlePhase) {
    ============================================================ */
 function updateGroupPositions(g, from, to, t) {
   const el = g.el, pos = g.pos;
+  const IT = g.kepIters || 8;
   for (let k = from; k < to; k++) {
     const o = k * STRIDE;
     const a = el[o], e = el[o + 1], b = el[o + 2];
@@ -652,7 +698,7 @@ function updateGroupPositions(g, from, to, t) {
     M = M % TWO_PI;
     if (M > Math.PI) M -= TWO_PI; else if (M < -Math.PI) M += TWO_PI;
     let E = e < 0.8 ? M : Math.PI * (M < 0 ? -1 : 1);
-    for (let j = 0; j < 8; j++) {
+    for (let j = 0; j < IT; j++) {
       const s = Math.sin(E), c = Math.cos(E);
       const d = (E - e * s - M) / (1 - e * c);
       E -= d;
@@ -822,10 +868,15 @@ function render(now) {
   eye[0] = c.target[0] + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw);
   eye[1] = c.target[1] + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw);
   eye[2] = c.target[2] + c.dist * Math.sin(c.pitch);
-  // near plane follows zoom so a focused moon system isn't clipped away
-  mat4Perspective(proj, FOV, canvas.width / canvas.height, Math.min(0.01, c.dist * 0.2), 4000);
+  // near plane follows zoom so a focused moon system isn't clipped away;
+  // far plane covers the Oort shell and long-period comet orbits
+  mat4Perspective(proj, FOV, canvas.width / canvas.height, Math.min(0.01, c.dist * 0.2), 260000);
   mat4LookAt(view, eye, c.target, [0, 0, 1]);
   mat4Mul(vp, proj, view);
+  // star dome: same orientation, no translation — a sky at any zoom level
+  viewSky.set(view);
+  viewSky[12] = viewSky[13] = viewSky[14] = 0;
+  mat4Mul(vpSky, proj, viewSky);
 
   gl.clear(gl.COLOR_BUFFER_BIT);
   const pixScale = canvas.height / (2 * Math.tan(FOV / 2));
@@ -863,7 +914,7 @@ function render(now) {
 
   /* ---- points ---- */
   gl.useProgram(ptProg);
-  gl.uniformMatrix4fv(PT.uVP, false, vp);
+  gl.uniformMatrix4fv(PT.uVP, false, vpSky);   // stars ride the rotation-only dome
   gl.uniform1f(PT.uPixScale, pixScale);
   gl.uniform1f(PT.uTime, timeS);
 
@@ -882,6 +933,7 @@ function render(now) {
   gl.uniform1f(PT.uAlpha, 0.8);
   bindPointAttrs(starsWarm.posBuf, starsWarm.sizeBuf, starsWarm.phaseBuf);
   gl.drawArrays(gl.POINTS, 0, starsWarm.count);
+  gl.uniformMatrix4fv(PT.uVP, false, vp);      // back to world space
 
   // asteroids
   gl.uniform1f(PT.uMinPx, 1.25 * dpr);
@@ -897,6 +949,20 @@ function render(now) {
     gl.uniform1f(PT.uAlpha, 0.85);
     bindPointAttrs(g.posBuf, g.sizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, g.count);
+  }
+
+  // Oort cloud representation — invisible inside the planetary system,
+  // resolves as the camera makes the journey out
+  if (OORT.visible) {
+    const oortA = Math.min((state.cam.dist - 150) / 2500, 0.5);
+    if (oortA > 0.004) {
+      gl.uniform1f(PT.uMinPx, 0.7 * dpr);
+      gl.uniform1f(PT.uMaxPx, 3 * dpr);
+      gl.uniform3f(PT.uColor, 0.62, 0.7, 0.85);
+      gl.uniform1f(PT.uAlpha, oortA);
+      bindPointAttrs(OORT.posBuf, OORT.sizeBuf, null, 0);
+      gl.drawArrays(gl.POINTS, 0, OORT.count);
+    }
   }
 
   // PHA highlight overlay (orange, on top of the normal points)
@@ -948,12 +1014,14 @@ function render(now) {
   }
 
   // sun core
-  gl.uniform1f(PT.uMinPx, 10 * dpr);
-  gl.uniform1f(PT.uMaxPx, 58 * dpr);
-  gl.uniform3f(PT.uColor, 1.0, 0.93, 0.78);
-  gl.uniform1f(PT.uAlpha, 1.0);
-  bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
-  gl.drawArrays(gl.POINTS, 0, 1);
+  if (state.showSun) {
+    gl.uniform1f(PT.uMinPx, 10 * dpr);
+    gl.uniform1f(PT.uMaxPx, 58 * dpr);
+    gl.uniform3f(PT.uColor, 1.0, 0.93, 0.78);
+    gl.uniform1f(PT.uAlpha, 1.0);
+    bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
+    gl.drawArrays(gl.POINTS, 0, 1);
+  }
 
   updateOverlays(pixScale);
   updateHUD();
@@ -999,12 +1067,12 @@ function buildPhaList() {
 }
 let phaPos = new Float32Array(0), phaPosBuf = null;
 function updateOverlays(pixScale) {
-  // sun halo
-  const sp = project(0, 0, 0);
+  // sun halo (fades out once the Sun is a sub-pixel speck)
+  const sp = state.showSun ? project(0, 0, 0) : null;
   if (sp) {
     const px = (pixScale / dpr) * 0.55 / Math.max(sp[2], 0.05);
     const sc = Math.min(Math.max(px / 160, 0.22), 2.6);
-    sunHalo.style.opacity = "1";
+    sunHalo.style.opacity = String(Math.min(px / 24, 1));
     sunHalo.style.transform = `translate(${sp[0] - cssW / 2}px, ${sp[1] - cssH / 2}px) scale(${sc})`;
   } else {
     sunHalo.style.opacity = "0";
@@ -1074,8 +1142,12 @@ function updateOverlays(pixScale) {
     const k = state.selMoon;
     selPos = [moons.pos[k * 3], moons.pos[k * 3 + 1], moons.pos[k * 3 + 2]];
     selName = moons.meta[k].name;
+  } else if (state.selSun) {
+    selPos = [0, 0, 0];
+    selName = "Sun";
   }
   if (selPos) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
+  updateScaleBar();
   if (selPos) {
     if (!selMarkerEl) {
       selMarkerEl = document.createElement("div");
@@ -1091,6 +1163,22 @@ function updateOverlays(pixScale) {
   } else if (selMarkerEl) {
     selMarkerEl.style.opacity = "0";
   }
+}
+
+/* ---- scale bar: a nice 1-2-5 length at the focus-plane depth ---- */
+let lastScaleTxt = "";
+function updateScaleBar() {
+  const auPerPx = (2 * state.cam.dist * Math.tan(FOV / 2)) / cssH;
+  const raw = auPerPx * 130;                 // target ≈130 px
+  let unit = "au", scale = 1;
+  if (raw < 0.1) { unit = "km"; scale = 149597870.7; }
+  const rawU = raw * scale;
+  const p10 = Math.pow(10, Math.floor(Math.log10(rawU)));
+  const mant = rawU / p10;
+  const nice = (mant < 1.5 ? 1 : mant < 3.5 ? 2 : mant < 7.5 ? 5 : 10) * p10;
+  $("scale-line").style.width = (nice / scale / auPerPx).toFixed(1) + "px";
+  const txt = nice.toLocaleString("en-US") + " " + unit;
+  if (txt !== lastScaleTxt) { $("scale-text").textContent = txt; lastScaleTxt = txt; }
 }
 
 /* ---- HUD: animated counter + clock ---- */
@@ -1214,7 +1302,8 @@ function ingest(resp) {
 // Comets are given as perihelion distance q + time of perihelion passage tp.
 // Convert to the same {a, M, n, epoch} record the propagator already uses:
 // a = q/(1-e); mean anomaly is 0 at perihelion, so reference the epoch to tp.
-// Long-period / hyperbolic comets (e ≥ 0.995) are skipped — no closed orbit.
+// e < 0.995 → periodic comets; 0.995 ≤ e < 0.9999 → long-period comets, the
+// Oort-cloud evidence layer. Truly parabolic/hyperbolic records are skipped.
 function ingestComets(resp) {
   if (!resp || !Array.isArray(resp.fields) || !Array.isArray(resp.data)) return 0;
   const ix = {};
@@ -1222,54 +1311,65 @@ function ingestComets(resp) {
   for (const f of ["pdes", "e", "i", "om", "w", "q", "tp"]) if (!(f in ix)) return 0;
   const num = (v) => (v == null || v === "" ? NaN : +v);
 
-  const rows = [];
+  const buckets = { [GI.COM]: [], [GI.LPC]: [] };
   for (const row of resp.data) {
     const pdes = row[ix.pdes];
     if (pdes == null || seen.has(pdes)) continue;
     const e = num(row[ix.e]), q = num(row[ix.q]), tp = num(row[ix.tp]);
     const inc = num(row[ix.i]), om = num(row[ix.om]), w = num(row[ix.w]);
-    if (!(q > 0) || !(e >= 0) || e >= 0.995 ||
+    if (!(q > 0) || !(e >= 0) || e >= 0.9999 ||
         !isFinite(inc) || !isFinite(om) || !isFinite(w) || !isFinite(tp)) continue;
+    const a = q / (1 - e);
+    if (a > 80000) continue;                     // beyond even the Oort shell
     seen.add(pdes);
+    const lpc = e >= 0.995;
     const diam = num(row[ix.diameter]);
-    rows.push({
-      pdes, name: (row[ix.name] || "").trim() || pdes, cls: "COM",
-      a: q / (1 - e), e, inc, om, w, tp,
+    buckets[lpc ? GI.LPC : GI.COM].push({
+      pdes, name: (row[ix.name] || "").trim() || pdes, cls: lpc ? "LPC" : "COM",
+      a, e, inc, om, w, tp,
       diam: isFinite(diam) ? diam : NaN, rot: num(row[ix.rot_per]),
       albedo: NaN, spec: "", pha: false, moid: NaN,
     });
   }
-  if (!rows.length) return 0;
 
-  const g = groups[GI.COM];
-  const n0 = g.count, n1 = n0 + rows.length;
-  const el = new Float32Array(n1 * STRIDE); el.set(g.el);
-  const pos = new Float32Array(n1 * 3); pos.set(g.pos);
-  const sizes = new Float32Array(n1); sizes.set(g.sizes);
+  let added = 0;
   const Pb = new Float64Array(6);
-  rows.forEach((r, j) => {
-    const k = n0 + j, o = k * STRIDE;
-    perifocalBasis(r.w * DEG, r.om * DEG, r.inc * DEG, Pb);
-    el[o] = r.a;
-    el[o + 1] = r.e;
-    el[o + 2] = r.a * Math.sqrt(1 - r.e * r.e);
-    el[o + 3] = 0;                               // M = 0 at perihelion
-    el[o + 4] = GAUSS_K / Math.pow(r.a, 1.5);    // rad/day
-    el[o + 5] = r.tp - J2000;                    // reference epoch = perihelion passage
-    el[o + 6] = Pb[0]; el[o + 7] = Pb[1]; el[o + 8] = Pb[2];
-    el[o + 9] = Pb[3]; el[o + 10] = Pb[4]; el[o + 11] = Pb[5];
-    sizes[k] = 0.05;
-    g.meta.push(makeMeta(r, "c"));
-  });
-  g.el = el; g.pos = pos; g.sizes = sizes; g.count = n1;
-  if (!g.posBuf) g.posBuf = gl.createBuffer();
-  if (g.sizeBuf) gl.deleteBuffer(g.sizeBuf);
-  g.sizeBuf = makeBuffer(sizes);
-  g.dirty = true;
-  state.totalLoaded += rows.length;
-  state.needFullUpdate = true;
-  renderLegend();
-  return rows.length;
+  for (const giStr of Object.keys(buckets)) {
+    const gi = +giStr, rows = buckets[gi];
+    if (!rows.length) continue;
+    const g = groups[gi];
+    const n0 = g.count, n1 = n0 + rows.length;
+    const el = new Float32Array(n1 * STRIDE); el.set(g.el);
+    const pos = new Float32Array(n1 * 3); pos.set(g.pos);
+    const sizes = new Float32Array(n1); sizes.set(g.sizes);
+    rows.forEach((r, j) => {
+      const k = n0 + j, o = k * STRIDE;
+      perifocalBasis(r.w * DEG, r.om * DEG, r.inc * DEG, Pb);
+      el[o] = r.a;
+      el[o + 1] = r.e;
+      el[o + 2] = r.a * Math.sqrt(1 - r.e * r.e);
+      el[o + 3] = 0;                               // M = 0 at perihelion
+      el[o + 4] = GAUSS_K / Math.pow(r.a, 1.5);    // rad/day
+      el[o + 5] = r.tp - J2000;                    // reference epoch = perihelion passage
+      el[o + 6] = Pb[0]; el[o + 7] = Pb[1]; el[o + 8] = Pb[2];
+      el[o + 9] = Pb[3]; el[o + 10] = Pb[4]; el[o + 11] = Pb[5];
+      sizes[k] = 0.05;
+      g.meta.push(makeMeta(r, "c"));
+    });
+    g.el = el; g.pos = pos; g.sizes = sizes; g.count = n1;
+    if (gi === GI.LPC) g.kepIters = 28;            // near-parabolic Newton is slow
+    if (!g.posBuf) g.posBuf = gl.createBuffer();
+    if (g.sizeBuf) gl.deleteBuffer(g.sizeBuf);
+    g.sizeBuf = makeBuffer(sizes);
+    g.dirty = true;
+    added += rows.length;
+  }
+  if (added) {
+    state.totalLoaded += added;
+    state.needFullUpdate = true;
+    renderLegend();
+  }
+  return added;
 }
 
 // Interstellar visitors: e > 1, so the orbit is an open hyperbola and the body
@@ -1573,6 +1673,13 @@ function legendRow(label, count, css, desc, onToggle, isOn) {
 function renderLegend() {
   const ul = $("legend-list");
   ul.innerHTML = "";
+  ul.appendChild(legendRow("Sun", 1, "#ffd479",
+    "Our star — a G2V main-sequence dwarf holding 99.86% of the solar system's mass. Click it for details.",
+    (li) => {
+      state.showSun = !state.showSun;
+      li.classList.toggle("off", !state.showSun);
+      if (!state.showSun && state.selSun) clearSelection();
+    }, state.showSun));
   ul.appendChild(legendRow("Planets", PLANETS.length, "#9ec5ff",
     "The eight major planets, placed by the JPL approximate ephemeris (date-accurate 1800–2050). Click one and the camera flies to it.",
     (li) => {
@@ -1588,6 +1695,10 @@ function renderLegend() {
       if (!g.visible && state.selected && state.selected.group === gi) clearSelection();
     }, g.visible));
   });
+
+  ul.appendChild(legendRow("Oort cloud", "inferred", "#9aa7c4",
+    "A statistical representation, not data — no Oort-cloud object has ever been directly observed. Its existence and extent (≈2,000–100,000 au) are inferred from the orbits of long-period comets. Zoom all the way out to make the journey.",
+    (li) => { OORT.visible = !OORT.visible; li.classList.toggle("off", !OORT.visible); }, OORT.visible));
 
   // overlay toggles (not populations)
   const overlays = [
@@ -1626,6 +1737,7 @@ function selectObject(gi, k) {
   state.selected = { group: gi, index: k };
   state.selPlanet = null;
   state.selMoon = null;
+  state.selSun = false;
   // selecting a small body with its own moons (Pluto) focuses the camera on it
   if (plutoRef && gi === plutoRef[0] && k === plutoRef[1]) focusOn({ small: plutoRef });
   const o = k * STRIDE, el = g.el;
@@ -1718,6 +1830,7 @@ function selectPlanet(i) {
   state.selPlanet = i;
   state.selected = null;
   state.selMoon = null;
+  state.selSun = false;
   selOrbitCount = 0;
   focusOn({ planet: i });
   let nMoons = 0;
@@ -1744,11 +1857,39 @@ function selectPlanet(i) {
   $("panel-info").hidden = false;
 }
 
+function selectSun() {
+  state.selSun = true;
+  state.selected = null;
+  state.selPlanet = null;
+  state.selMoon = null;
+  selOrbitCount = 0;
+  moonOrbitCount = 0;
+  $("info-name").textContent = "Sun";
+  $("info-class").textContent = "G2V main-sequence star";
+  $("info-badges").innerHTML =
+    `<span class="badge badge-dwarf">● 99.86% of the system's mass</span>`;
+  $("info-a").textContent = "—";
+  $("info-e").textContent = "—";
+  $("info-i").textContent = "—";
+  $("info-per").textContent = "≈230 Myr (galactic)";
+  $("info-d-label").textContent = "diameter";
+  $("info-d").textContent = "1,392,700 km";
+  setRow("info-row-q", "info-q", null);
+  setRow("info-row-albedo", "info-albedo", null);
+  setRow("info-row-rot", "info-rot", "25.05 d (equator)");
+  setRow("info-row-spec", "info-spec", "G2V");
+  setRow("info-row-moid", "info-moid", null);
+  $("info-link").hidden = true;
+  showPhotoPreview("sun.jpg", "NASA/SDO · extreme UV");
+  $("panel-info").hidden = false;
+}
+
 function selectMoon(k) {
   const m = moons.meta[k];
   state.selMoon = k;
   state.selected = null;
   state.selPlanet = null;
+  state.selSun = false;
   selOrbitCount = 0;
   buildMoonOrbit(k);
   $("info-name").textContent = m.name;
@@ -1790,6 +1931,7 @@ function clearSelection() {
   state.selected = null;
   state.selPlanet = null;
   state.selMoon = null;
+  state.selSun = false;
   selOrbitCount = 0;
   moonOrbitCount = 0;
   stopPreview();
@@ -1798,6 +1940,9 @@ function clearSelection() {
 function formatPeriod(yr) {
   const d = yr * 365.25;
   if (d < 10) return d.toFixed(2) + " days";
+  if (yr >= 1e6) return (yr / 1e6).toFixed(1) + " Myr";
+  if (yr >= 1e4) return Math.round(yr / 1e3) + " kyr";
+  if (yr >= 1e3) return Math.round(yr).toLocaleString("en-US") + " yr";
   return yr < 1.5 ? Math.round(d) + " days" : yr.toFixed(yr < 10 ? 2 : 1) + " yr";
 }
 function formatKm(km) {
@@ -1981,6 +2126,15 @@ function pickAt(x, y) {
       if (d < bestD) { bestD = d; best = [gi, k]; }
     }
   }
+  // the Sun
+  let bestSun = false;
+  if (state.showSun) {
+    const p = project(0, 0, 0);
+    if (p) {
+      const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; bestSun = true; best = null; }
+    }
+  }
   // planets
   let bestPlanet = -1;
   if (state.showPlanets) {
@@ -2010,6 +2164,7 @@ function pickAt(x, y) {
   }
   if (bestMoon >= 0) selectMoon(bestMoon);
   else if (bestPlanet >= 0) selectPlanet(bestPlanet);
+  else if (bestSun) selectSun();
   else if (best) selectObject(best[0], best[1]);
   else clearSelection();
 }
@@ -2022,7 +2177,8 @@ function runSearch(q) {
   resultsEl.innerHTML = "";
   if (q.length < 2) { resultsEl.hidden = true; return; }
   const hits = [];   // { name, cls, select }
-  // planets and moons first — exact-prefix matches are what people want
+  // the Sun, planets and moons first — exact-prefix matches are what people want
+  if ("sun".includes(q)) hits.push({ name: "Sun", cls: "STAR", select: selectSun });
   for (let i = 0; i < PLANETS.length; i++) {
     if (PLANETS[i].name.toLowerCase().includes(q)) {
       hits.push({ name: PLANETS[i].name, cls: "PLANET", select: () => selectPlanet(i) });
@@ -2113,7 +2269,7 @@ canvas.addEventListener("pointermove", (ev) => {
   } else if (pointers.size === 2) {
     const [p1, p2] = [...pointers.values()];
     const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-    if (pinchD0 > 0 && d > 0) state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), minDist(), 240);
+    if (pinchD0 > 0 && d > 0) state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), minDist(), MAX_DIST);
     dismissHint();
   }
 });
@@ -2130,7 +2286,9 @@ canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", (ev) => {
   ev.preventDefault();
   state.camEaseRate = 9;
-  state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011), minDist(), 240);
+  // bigger strides once past the planets, or the Oort journey takes 80 notches
+  const accel = state.cam.tDist > 120 ? 2.2 : 1;
+  state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011 * accel), minDist(), MAX_DIST);
   dismissHint();
 }, { passive: false });
 function resetToSun() {

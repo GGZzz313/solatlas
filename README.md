@@ -15,9 +15,15 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 - **Real positions, right now** — every asteroid is placed by solving Kepler's equation
   for its actual published orbital elements at the current instant (heliocentric
   ecliptic J2000 frame).
-- **Eight color-coded populations** — near-Earth asteroids, Mars-crossers, the main belt,
-  Jupiter trojans, centaurs, trans-Neptunian objects, **comets**, and everything else —
-  each toggleable from the legend.
+- **A full census in the legend** — the Sun, the planets, near-Earth asteroids,
+  Mars-crossers, the main belt, Jupiter trojans, centaurs, trans-Neptunian objects,
+  dwarf planets, **comets**, long-period comets, and interstellar visitors — every row
+  toggleable, with a plain-English ⓘ description of what it means.
+- **The journey to the Oort cloud** — zoom out past everything and a clearly-labelled
+  *inferred representation* of the Oort cloud resolves at its true scale
+  (≈2,000–100,000 au; no Oort object has ever been observed — the shell is drawn where
+  long-period comet orbits say it must be). A live scale bar keeps the distances honest,
+  and the 379 near-parabolic comets are plotted as the real evidence pointing at it.
 - **Comets** — ~1,300 periodic and Halley-type comets, converted from their perihelion
   elements (`q`, `tp`) and propagated on the same Keplerian engine.
 - **Dwarf planets** — Ceres, Pluto, Eris, Haumea, Makemake and friends carry always-on
