@@ -1092,7 +1092,9 @@ function updateOverlays(pixScale) {
     ps.labelEl.style.opacity = show ? "1" : "0";
     if (show) ps.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
-  // dwarf-planet labels (always-on anchors)
+  // dwarf-planet labels — fade out as the camera leaves the planetary
+  // region (they'd pile up at the center of the Oort shot), back on return
+  const dwarfFade = clamp(1 - (state.cam.dist - 250) / 550, 0, 1);
   for (const d of dwarfList) {
     const g = groups[d.gi];
     if (!d.el) {
@@ -1101,10 +1103,10 @@ function updateOverlays(pixScale) {
       d.el.textContent = d.name;
       labelsEl.appendChild(d.el);
     }
-    if (!g.visible) { d.el.style.opacity = "0"; continue; }
+    if (!g.visible || dwarfFade === 0) { d.el.style.opacity = "0"; continue; }
     const p = project(g.pos[d.k * 3], g.pos[d.k * 3 + 1], g.pos[d.k * 3 + 2]);
     const show = p && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
-    d.el.style.opacity = show ? "0.85" : "0";
+    d.el.style.opacity = show ? (0.85 * dwarfFade).toFixed(2) : "0";
     if (show) d.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
   // major-moon labels — only when the moon is visually separated from its parent
