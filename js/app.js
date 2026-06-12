@@ -1044,6 +1044,7 @@ function project(x, y, z) {
 
 /* ---- HTML overlays: sun halo, planet labels, selection marker ---- */
 let selMarkerEl = null;
+let oortLabelEl = null;
 const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
 const moonLabelList = []; // { k, name, el } for major moons (radius ≥ 200 km)
 function buildDwarfList() {
@@ -1130,6 +1131,22 @@ function updateOverlays(pixScale) {
     ml.el.style.opacity = show ? "0.85" : "0";
     if (show) ml.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
+  // Oort cloud label — fades in once the shell starts to resolve
+  if (!oortLabelEl) {
+    oortLabelEl = document.createElement("div");
+    oortLabelEl.className = "pl-label oort-label";
+    oortLabelEl.textContent = "Oort cloud · inferred";
+    labelsEl.appendChild(oortLabelEl);
+  }
+  const oortLblFade = OORT.visible ? clamp((state.cam.dist - 1500) / 2500, 0, 1) : 0;
+  if (oortLblFade > 0) {
+    const p = project(26000, 8000, 9000);   // a point inside the shell
+    if (p && p[0] > 40 && p[0] < cssW - 40 && p[1] > 30 && p[1] < cssH - 30) {
+      oortLabelEl.style.opacity = (0.8 * oortLblFade).toFixed(2);
+      oortLabelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+    } else oortLabelEl.style.opacity = "0";
+  } else oortLabelEl.style.opacity = "0";
+
   // selection marker (asteroid, planet, or moon) + live distance readout
   let selPos = null, selName = "";
   if (state.selected) {

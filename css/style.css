@@ -556,6 +556,7 @@ html, body {
 
 /* dwarf-planet & moon floating labels */
 .dwarf-label { color: rgba(196, 181, 253, 0.92); }
+.oort-label { color: rgba(154, 167, 196, 0.9); letter-spacing: 0.3em; }
 .moon-label {
   color: rgba(199, 210, 232, 0.95);
   text-transform: none;
