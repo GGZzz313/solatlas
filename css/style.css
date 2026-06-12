@@ -432,8 +432,8 @@ html, body {
 .panel-close:hover { color: var(--ink); }
 .panel-foot { margin-top: 10px; font-size: 10.5px; color: var(--ink-dim); letter-spacing: 0.04em; }
 
-/* ---- legend ---- */
-#panel-legend { right: 16px; top: 86px; width: 250px; max-height: calc(100vh - 210px); overflow-y: auto; scrollbar-width: thin; }
+/* ---- legend (right: 72px keeps the FAB column's lane clear) ---- */
+#panel-legend { right: 72px; top: 86px; width: 250px; max-height: calc(100vh - 210px); overflow-y: auto; scrollbar-width: thin; }
 #legend-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
 #legend-list li {
   display: flex;
@@ -482,7 +482,7 @@ html, body {
 #legend-list .ldesc[hidden] { display: none; }
 
 /* ---- close approaches ---- */
-#panel-cad { right: 16px; top: 480px; width: 300px; max-height: min(38vh, 320px); display: flex; flex-direction: column; }
+#panel-cad { right: 72px; top: 480px; width: 300px; max-height: min(38vh, 320px); display: flex; flex-direction: column; }
 #cad-list { list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
 #cad-list li { display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; padding: 8px 10px; border-radius: 10px; background: rgba(140, 165, 220, 0.06); font-size: 12.5px; }
 #cad-list .cad-name { font-weight: 600; color: var(--ink); }
@@ -956,6 +956,7 @@ html, body {
 @media (max-width: 860px) {
   #hud-top { flex-wrap: wrap; gap: 10px 16px; padding: 12px 14px 18px; }
   .search-kbd { display: none; }
+  .panel { z-index: 40; }   /* open sheets cover the FAB column; close via ✕ */
   .search-wrap { width: 100%; order: 3; margin-left: 0; }
   .hide-sm { display: none !important; }
 
@@ -993,7 +994,7 @@ html, body {
   #panel-cad { display: flex; }
   #panel-legend.closed { display: none; }
   #panel-cad.closed { display: none; }
-  #panel-cad { top: auto; bottom: calc(96px + var(--safe-b)); right: 16px; }
+  #panel-cad { top: auto; bottom: calc(96px + var(--safe-b)); right: 72px; }
   #panel-sentry { display: flex; }
   #panel-sentry.closed { display: none; }
   #fab-col { top: 50%; }
