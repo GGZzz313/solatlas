@@ -152,7 +152,9 @@ const GROUPS = [
   { key: "CEN", label: "Centaurs", color: [0.75, 0.52, 0.99], css: "#c084fc",
     desc: "Icy bodies on unstable orbits between Jupiter and Neptune — part asteroid, part comet." },
   { key: "TNO", label: "Trans-Neptunian", color: [0.49, 0.65, 1.0], css: "#7da7ff",
-    desc: "Everything orbiting beyond Neptune: the Kuiper Belt, the scattered disk, and dwarf planets like Pluto and Eris." },
+    desc: "Everything orbiting beyond Neptune: the Kuiper Belt and the scattered disk." },
+  { key: "DWF", label: "Dwarf planets", color: [0.83, 0.76, 1.0], css: "#d4c2ff",
+    desc: "Worlds massive enough for gravity to pull them round, but which never cleared their orbits — Ceres, Pluto, Eris, Haumea, Makemake and the leading candidates." },
   { key: "COM", label: "Comets", color: [0.55, 0.93, 1.0], css: "#8ce9ff",
     desc: "Periodic comets on closed orbits — icy nuclei that grow comas and tails when they near the Sun." },
   { key: "ISO", label: "Interstellar", color: [1.0, 0.42, 0.85], css: "#ff6bd9",
@@ -301,6 +303,7 @@ const state = {
   selMoon: null,           // selected moon index
   focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
   camEaseRate: 9,          // lowered during the launch dolly-in, restored after
+  showPlanets: true,       // planets population (points, orbits, labels)
   showPHA: false,          // highlight potentially-hazardous asteroids
   totalLoaded: 0,
   shownCount: 0,
@@ -832,12 +835,14 @@ function render(now) {
   gl.useProgram(lnProg);
   gl.uniformMatrix4fv(LN.uVP, false, vp);
   gl.enableVertexAttribArray(LN.aPos);
-  for (const ps of planetState) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, ps.orbitBuf);
-    gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
-    gl.uniform3f(LN.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
-    gl.uniform1f(LN.uAlpha, 0.14);
-    gl.drawArrays(gl.LINE_LOOP, 0, ps.orbitCount);
+  if (state.showPlanets) {
+    for (const ps of planetState) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, ps.orbitBuf);
+      gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform3f(LN.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
+      gl.uniform1f(LN.uAlpha, 0.14);
+      gl.drawArrays(gl.LINE_LOOP, 0, ps.orbitCount);
+    }
   }
   if (state.selected && selOrbitCount) {
     gl.bindBuffer(gl.ARRAY_BUFFER, selOrbitBuf);
@@ -931,13 +936,15 @@ function render(now) {
   }
 
   // planets
-  gl.uniform1f(PT.uMinPx, 2.5 * dpr);
-  gl.uniform1f(PT.uMaxPx, 26 * dpr);
-  for (const ps of planetState) {
-    gl.uniform3f(PT.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
-    gl.uniform1f(PT.uAlpha, 1.0);
-    bindPointAttrs(ps.posBuf, ps.sizeBuf, null, 0);
-    gl.drawArrays(gl.POINTS, 0, 1);
+  if (state.showPlanets) {
+    gl.uniform1f(PT.uMinPx, 2.5 * dpr);
+    gl.uniform1f(PT.uMaxPx, 26 * dpr);
+    for (const ps of planetState) {
+      gl.uniform3f(PT.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
+      gl.uniform1f(PT.uAlpha, 1.0);
+      bindPointAttrs(ps.posBuf, ps.sizeBuf, null, 0);
+      gl.drawArrays(gl.POINTS, 0, 1);
+    }
   }
 
   // sun core
@@ -1013,7 +1020,7 @@ function updateOverlays(pixScale) {
     const p = project(ps.pos[0], ps.pos[1], ps.pos[2]);
     if (!p) { ps.labelEl.style.opacity = "0"; continue; }
     const px = (pixScale / dpr) * ps.def.size / p[2];
-    const show = px > 1.6 && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
+    const show = state.showPlanets && px > 1.6 && p[0] > -40 && p[0] < cssW + 40 && p[1] > -20 && p[1] < cssH + 20;
     ps.labelEl.style.opacity = show ? "1" : "0";
     if (show) ps.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
@@ -1148,7 +1155,9 @@ function ingest(resp) {
     if (!(a > 0) || !(e >= 0) || e >= 0.995 || !isFinite(inc) || !isFinite(om) || !isFinite(w) || !isFinite(ma) || !isFinite(ep)) continue;
     seen.add(pdes);
     const cls = (row[ix.class] || "").trim();
-    const gi = cls in CLASS_TO_GROUP ? CLASS_TO_GROUP[cls] : GI.OTH;
+    // dwarf planets get their own population regardless of dynamical class
+    const gi = DWARFS[pdes] ? GI.DWF
+      : cls in CLASS_TO_GROUP ? CLASS_TO_GROUP[cls] : GI.OTH;
     const H = num(row[ix.H]);
     const diam = num(row[ix.diameter]);
     const name = (row[ix.name] || "").trim() || pdes;
@@ -1564,6 +1573,13 @@ function legendRow(label, count, css, desc, onToggle, isOn) {
 function renderLegend() {
   const ul = $("legend-list");
   ul.innerHTML = "";
+  ul.appendChild(legendRow("Planets", PLANETS.length, "#9ec5ff",
+    "The eight major planets, placed by the JPL approximate ephemeris (date-accurate 1800–2050). Click one and the camera flies to it.",
+    (li) => {
+      state.showPlanets = !state.showPlanets;
+      li.classList.toggle("off", !state.showPlanets);
+      if (!state.showPlanets && state.selPlanet != null) clearSelection();
+    }, state.showPlanets));
   groups.forEach((g, gi) => {
     if (!g.count) return;
     ul.appendChild(legendRow(g.label, g.count, g.css, g.desc, (li) => {
@@ -1967,12 +1983,14 @@ function pickAt(x, y) {
   }
   // planets
   let bestPlanet = -1;
-  for (let i = 0; i < planetState.length; i++) {
-    const ps = planetState[i];
-    const p = project(ps.pos[0], ps.pos[1], ps.pos[2]);
-    if (!p) continue;
-    const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
-    if (d < bestD) { bestD = d; bestPlanet = i; best = null; }
+  if (state.showPlanets) {
+    for (let i = 0; i < planetState.length; i++) {
+      const ps = planetState[i];
+      const p = project(ps.pos[0], ps.pos[1], ps.pos[2]);
+      if (!p) continue;
+      const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; bestPlanet = i; best = null; }
+    }
   }
   // moons — only pickable once visually separated from their parent,
   // so clicking an unzoomed planet never grabs an invisible moon
