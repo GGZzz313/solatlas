@@ -1148,6 +1148,7 @@ function updateOverlays(pixScale) {
   }
   if (selPos) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
   updateScaleBar();
+  updateZoomBar();
   if (selPos) {
     if (!selMarkerEl) {
       selMarkerEl = document.createElement("div");
@@ -1163,6 +1164,21 @@ function updateOverlays(pixScale) {
   } else if (selMarkerEl) {
     selMarkerEl.style.opacity = "0";
   }
+}
+
+/* ---- zoom position indicator: log scale across the whole camera range ---- */
+const ZB_LO = Math.log10(5e-5), ZB_HI = Math.log10(MAX_DIST);
+const zbFrac = (d) => (Math.log10(d) - ZB_LO) / (ZB_HI - ZB_LO);
+(function initZoomBar() {
+  $("zb-earth").style.left = (zbFrac(1) * 100).toFixed(1) + "%";
+  $("zb-neptune").style.left = (zbFrac(30.07) * 100).toFixed(1) + "%";
+  const l = zbFrac(2000) * 100, r = zbFrac(100000) * 100;
+  $("zb-oort").style.left = l.toFixed(1) + "%";
+  $("zb-oort").style.width = (r - l).toFixed(1) + "%";
+})();
+const zoomThumbEl = $("zoom-thumb");
+function updateZoomBar() {
+  zoomThumbEl.style.left = (clamp(zbFrac(state.cam.dist), 0, 1) * 100).toFixed(2) + "%";
 }
 
 /* ---- scale bar: a nice 1-2-5 length at the focus-plane depth ---- */

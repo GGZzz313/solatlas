@@ -136,15 +136,24 @@
     <span id="sim-date">—</span>
     <button id="btn-now" title="Jump to the present">Now</button>
   </div>
-  <div class="time-controls">
-    <button id="btn-rev" class="tbtn" title="Reverse time" aria-label="Reverse time">⏴</button>
-    <button id="btn-play" class="tbtn tbtn-main" title="Play / pause" aria-label="Play or pause">❚❚</button>
-    <div class="speed-chips" id="speed-chips">
-      <button data-dps="1">1 d/s</button>
-      <button data-dps="7">1 wk/s</button>
-      <button data-dps="30" class="on">1 mo/s</button>
-      <button data-dps="182">6 mo/s</button>
-      <button data-dps="1826">5 yr/s</button>
+  <div class="time-stack">
+    <div class="time-controls">
+      <button id="btn-rev" class="tbtn" title="Reverse time" aria-label="Reverse time">⏴</button>
+      <button id="btn-play" class="tbtn tbtn-main" title="Play / pause" aria-label="Play or pause">❚❚</button>
+      <div class="speed-chips" id="speed-chips">
+        <button data-dps="1">1 d/s</button>
+        <button data-dps="7">1 wk/s</button>
+        <button data-dps="30" class="on">1 mo/s</button>
+        <button data-dps="182">6 mo/s</button>
+        <button data-dps="1826">5 yr/s</button>
+      </div>
+    </div>
+    <div id="zoom-bar" aria-hidden="true">
+      <span class="zb-track"></span>
+      <span class="zb-oort" id="zb-oort"></span>
+      <span class="zb-tick" id="zb-earth" title="Earth"></span>
+      <span class="zb-tick" id="zb-neptune" title="Neptune"></span>
+      <span class="zb-thumb" id="zoom-thumb"></span>
     </div>
   </div>
   <div class="credit hide-sm">data: <a href="https://ssd-api.jpl.nasa.gov/" target="_blank" rel="noopener">JPL SSD/CNEOS APIs</a><span id="snap-date"></span></div>

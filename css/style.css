@@ -789,7 +789,42 @@ html, body {
 }
 #btn-now:hover { background: rgba(125, 211, 252, 0.22); }
 
-.time-controls { display: flex; align-items: center; gap: 10px; margin: 0 auto; }
+.time-stack { display: flex; flex-direction: column; align-items: center; gap: 9px; margin: 0 auto; }
+.time-controls { display: flex; align-items: center; gap: 10px; }
+
+/* zoom position indicator — log scale from moon systems to the Oort edge */
+#zoom-bar { position: relative; width: min(300px, 58vw); height: 10px; pointer-events: none; }
+.zb-track {
+  position: absolute;
+  left: 0; right: 0; top: 4px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(140, 165, 220, 0.18);
+}
+.zb-oort {
+  position: absolute;
+  top: 4px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(130, 148, 186, 0.45);
+}
+.zb-tick {
+  position: absolute;
+  top: 1px;
+  width: 1px;
+  height: 8px;
+  background: rgba(174, 205, 255, 0.32);
+}
+.zb-thumb {
+  position: absolute;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.85);
+}
 .tbtn {
   width: 38px;
   height: 38px;
@@ -944,7 +979,7 @@ html, body {
   #hud-bottom { flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px calc(10px + var(--safe-b)); justify-content: center; }
   .time-readout { width: 100%; justify-content: center; }
   #sim-date { min-width: 0; }
-  .time-controls { margin: 0; }
+  .time-stack { margin: 0; }
   .speed-chips { overflow-x: auto; max-width: 56vw; scrollbar-width: none; }
   .speed-chips::-webkit-scrollbar { display: none; }
 
