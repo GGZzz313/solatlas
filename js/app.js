@@ -1168,8 +1168,9 @@ function updateOverlays(pixScale) {
   }
 }
 
-/* ---- zoom position indicator: log scale across the whole camera range ---- */
-const ZB_LO = Math.log10(5e-5), ZB_HI = Math.log10(MAX_DIST);
+/* ---- zoom position indicator: log scale over the standard zoom range
+   (0.18 au → Oort edge); focused moon-system dives peg the thumb left ---- */
+const ZB_LO = Math.log10(0.18), ZB_HI = Math.log10(MAX_DIST);
 const zbFrac = (d) => (Math.log10(d) - ZB_LO) / (ZB_HI - ZB_LO);
 (function initZoomBar() {
   $("zb-earth").style.left = (zbFrac(1) * 100).toFixed(1) + "%";
