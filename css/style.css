@@ -820,6 +820,21 @@ html, body {
   transition: background 0.15s;
 }
 #btn-now:hover { background: rgba(125, 211, 252, 0.22); }
+#btn-share {
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  background: rgba(196, 181, 253, 0.1);
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  border-radius: 99px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#btn-share:hover { background: rgba(196, 181, 253, 0.22); }
+#btn-share.copied { color: #8ef0b0; border-color: rgba(142, 240, 176, 0.5); background: rgba(142, 240, 176, 0.14); }
 
 .time-stack { display: flex; flex-direction: column; align-items: center; gap: 9px; margin: 0 auto; }
 .time-controls { display: flex; align-items: center; gap: 10px; }

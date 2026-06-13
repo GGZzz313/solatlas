@@ -865,6 +865,10 @@ function render(now) {
   // time machine
   if (state.playing) state.simJD += state.dir * state.dps * dt;
   updateBrandOrrery(dt);
+  // deep-link: consume lazy sat restores, then mirror the live view into the URL (debounced)
+  if (pendingSatSel != null && sats.loaded) { selectSatellite(pendingSatSel); pendingSatSel = null; }
+  if (pendingSatLayers && sats.loaded) { sats.visible = pendingSatLayers.wantSat; sats.debrisVisible = pendingSatLayers.wantDeb; pendingSatLayers = null; renderLegend(); }
+  if (loadedOnce && !isApplying) { const h = encodeState(); if (h !== lastHash) { lastHash = h; scheduleHashWrite(h); } }
 
   // propagate asteroid + planet + moon positions when time moved — BEFORE the
   // camera reads focusPosition(), or a focused planet is aimed at one frame late
@@ -1919,6 +1923,8 @@ async function loadAsteroids() {
     renderCloseApproaches(snap.cad);
     renderSentry(snap.sentry);
     loaderReady();
+    applyState(location.hash);        // restore a shared/deep-linked view, if any
+    lastHash = encodeState();         // baseline so the writer doesn't immediately rewrite a clean URL
   } catch (err) {
     console.warn("snapshot load failed:", err);
     status.textContent = "";
@@ -1941,6 +1947,11 @@ function loaderReady() {
     loader.removeEventListener("click", launch);
     window.removeEventListener("keydown", onKey);
     loader.classList.add("done");
+    if (skipDolly) {                 // arrived via a deep link — keep the restored view, no dive
+      state.camEaseRate = 9;
+      setTimeout(dismissHint, 6000);
+      return;
+    }
     const c = state.cam;
     c.dist = 205;
     c.pitch = 1.28;
@@ -2155,6 +2166,11 @@ function setRow(rowId, ddId, value) {
 // tint the info card to match the selected body's legend colour
 const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff", DEBRIS_CSS = "#ff7849";
 function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
+
+// ---- deep-link / shareable-URL state (defined here so select* can set currentRegion) ----
+let currentRegion = null;      // which REGIONS key is showing (regions set no state.sel* flag)
+let isApplying = false, lastHash = "", hashTimer = 0;
+let pendingSatSel = null, pendingSatLayers = null, skipDolly = false;
 
 function selectObject(gi, k) {
   const g = groups[gi];
@@ -2402,6 +2418,7 @@ function selectRegion(key) {
   state.selCraft = null;
   selOrbitCount = 0;
   moonOrbitCount = 0;
+  currentRegion = key;
   setCardAccent(R.accent);
   $("info-name").textContent = R.name;
   $("info-class").textContent = R.cls;
@@ -2548,12 +2565,123 @@ function clearSelection() {
   state.selSun = false;
   state.selSat = null;
   state.selCraft = null;
+  currentRegion = null;
   satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
   stopPreview();
   $("panel-info").hidden = true;
 }
+
+/* ============================================================
+   Deep-link / shareable URLs — encode the live view in the hash
+   ============================================================ */
+const GROUP_KEY = GROUPS.map((g) => g.key);     // group index → layer key
+
+function selectionKey() {
+  if (state.selSun) return "sun";
+  if (state.selPlanet != null) return "p" + state.selPlanet;
+  if (state.selMoon != null) return "m" + state.selMoon;
+  if (state.selSat != null) return "sat" + state.selSat;
+  if (state.selCraft != null) return "c" + state.selCraft;
+  if (state.selected) return "o" + encodeURIComponent(groups[state.selected.group].meta[state.selected.index].name);
+  if (currentRegion) return "r" + currentRegion;
+  return "";
+}
+function encodeState() {
+  const c = state.cam, p = ["v=1"];
+  const sel = selectionKey(); if (sel) p.push("sel=" + sel);
+  p.push("cam=" + c.tYaw.toFixed(3) + "," + c.tPitch.toFixed(3) + "," + (+c.tDist.toPrecision(5)));
+  if (state.focus) p.push("foc=" + (state.focus.planet != null
+    ? "p" + state.focus.planet : "s" + state.focus.small[0] + "." + state.focus.small[1]));
+  if (!state.playing) p.push("jd=" + state.simJD.toFixed(4));   // capture a frozen moment; live links stay live
+  p.push("t=" + (state.dps * state.dir));
+  if (!state.playing) p.push("pl=0");
+  const off = [];
+  if (!state.showSun) off.push("sun");
+  if (!state.showPlanets) off.push("pla");
+  if (!moons.visible) off.push("moon");
+  if (!OORT.visible) off.push("oort");
+  groups.forEach((g, gi) => { if (g.count && !g.visible) off.push(GROUP_KEY[gi]); });
+  if (off.length) p.push("off=" + off.join(","));
+  const on = [];
+  if (state.showPHA) on.push("pha");
+  if (sats.visible) on.push("sat");
+  if (sats.debrisVisible) on.push("deb");
+  if (craftVisible) on.push("craft");
+  if (state.trueScale) on.push("ts");
+  if (on.length) p.push("on=" + on.join(","));
+  return "#" + p.join("&");
+}
+function resolveSelection(tok) {
+  if (tok === "sun") return selectSun();
+  if (tok.slice(0, 3) === "sat") { const k = +tok.slice(3); focusOn({ planet: EARTH_IDX });
+    if (sats.loaded) selectSatellite(k); else { loadSatellites(); pendingSatSel = k; } return; }
+  if (tok[0] === "p") return selectPlanet(+tok.slice(1));
+  if (tok[0] === "m") { const k = +tok.slice(1), pi = moons.parentIdx[k];
+    if (pi != null && pi >= 0) focusOn({ planet: pi }); return selectMoon(k); }
+  if (tok[0] === "c") { craftVisible = true; return selectCraft(+tok.slice(1)); }
+  if (tok[0] === "r") return selectRegion(tok.slice(1));
+  if (tok[0] === "o") { const name = decodeURIComponent(tok.slice(1));
+    for (let gi = 0; gi < groups.length; gi++) { const g = groups[gi];
+      for (let k = 0; k < g.count; k++) if (g.meta[k].name === name) return selectObject(gi, k); } }
+}
+function applyState(hash) {
+  if (!hash || hash.length < 2) return;
+  try {
+    isApplying = true;
+    const map = {};
+    hash.replace(/^#/, "").split("&").forEach((kv) => { const i = kv.indexOf("="); if (i > 0) map[kv.slice(0, i)] = kv.slice(i + 1); });
+    if (map.v !== "1") return;
+    const off = (map.off || "").split(",").filter(Boolean);
+    const on = (map.on || "").split(",").filter(Boolean);
+    state.showSun = !off.includes("sun");
+    state.showPlanets = !off.includes("pla");
+    moons.visible = !off.includes("moon");
+    OORT.visible = !off.includes("oort");
+    groups.forEach((g, gi) => { g.visible = !off.includes(GROUP_KEY[gi]); });
+    state.showPHA = on.includes("pha");
+    craftVisible = on.includes("craft");
+    state.trueScale = on.includes("ts");
+    if (on.includes("sat") || on.includes("deb")) { loadSatellites(); pendingSatLayers = { wantSat: on.includes("sat"), wantDeb: on.includes("deb") }; }
+    renderLegend();
+    if (map.t != null && isFinite(+map.t)) {
+      const t = +map.t; state.dps = Math.abs(t) || 30; state.dir = t < 0 ? -1 : 1;
+      for (const x of $("speed-chips").children) x.classList.toggle("on", +x.dataset.dps === state.dps);
+    }
+    state.playing = map.pl !== "0"; syncPlayBtn();
+    state.simJD = (map.jd != null && isFinite(+map.jd)) ? +map.jd : jdNow();
+    state.needFullUpdate = true; buildPlanetOrbits();
+    if (map.sel) resolveSelection(map.sel);
+    if (map.foc && !state.focus) {
+      if (map.foc[0] === "p") focusOn({ planet: +map.foc.slice(1) });
+      else if (map.foc[0] === "s") { const a = map.foc.slice(1).split("."); focusOn({ small: [+a[0], +a[1]] }); }
+    }
+    if (map.cam) {
+      const a = map.cam.split(",").map(Number);
+      if (a.length === 3 && a.every(isFinite)) {
+        const c = state.cam; c.tYaw = c.yaw = a[0]; c.tPitch = c.pitch = a[1]; c.tDist = c.dist = a[2];
+        c.fBlend = 1; state.camEaseRate = 9; skipDolly = true;
+      }
+    }
+  } catch (e) { console.warn("deep-link restore failed:", e); }
+  finally { isApplying = false; }
+}
+function scheduleHashWrite(h) {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => { try { history.replaceState(null, "", h); } catch (_) { /* ignore */ } }, 250);
+}
+(function wireShare() {
+  const b = $("btn-share");
+  if (b) b.addEventListener("click", async () => {
+    const url = location.origin + location.pathname + encodeState();
+    try { await navigator.clipboard.writeText(url); } catch (_) { prompt("Copy this link to share the view:", url); }
+    b.classList.add("copied"); b.textContent = "Copied";
+    setTimeout(() => { b.classList.remove("copied"); b.textContent = "Share"; }, 1600);
+  });
+  window.addEventListener("hashchange", () => { if (!isApplying) { applyState(location.hash); lastHash = encodeState(); } });
+})();
+
 function formatArc(d) {
   if (d < 1.5) return "single night";
   if (d < 90) return Math.round(d) + " days";
