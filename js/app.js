@@ -1101,6 +1101,7 @@ const REGION_LABELS = [
 ];
 const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
 const moonLabelList = []; // { k, name, el } for major moons (radius ≥ 200 km)
+let sunLabelEl = null;
 function buildDwarfList() {
   dwarfList.length = 0;
   for (let gi = 0; gi < groups.length; gi++) {
@@ -1132,6 +1133,16 @@ function updateOverlays(pixScale) {
   } else {
     sunHalo.style.opacity = "0";
   }
+  // Sun label (persistent, like the planets)
+  if (!sunLabelEl) {
+    sunLabelEl = document.createElement("div");
+    sunLabelEl.className = "pl-label";
+    sunLabelEl.textContent = "Sun";
+    labelsEl.appendChild(sunLabelEl);
+  }
+  const sshow = sp && sp[0] > -40 && sp[0] < cssW + 40 && sp[1] > -20 && sp[1] < cssH + 20;
+  sunLabelEl.style.opacity = sshow ? "1" : "0";
+  if (sshow) sunLabelEl.style.transform = `translate(${sp[0]}px, ${sp[1]}px) translate(-50%,-150%)`;
   // planet labels
   for (const ps of planetState) {
     if (!ps.labelEl) {
