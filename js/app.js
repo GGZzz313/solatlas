@@ -311,6 +311,7 @@ const state = {
   camEaseRate: 9,          // lowered during the launch dolly-in, restored after
   showPlanets: true,       // planets population (points, orbits, labels)
   showPHA: false,          // highlight potentially-hazardous asteroids
+  trueScale: false,        // render bodies at real angular size (the honest emptiness)
   totalLoaded: 0,
   shownCount: 0,
   needFullUpdate: true,
@@ -412,11 +413,12 @@ attribute vec3 aPos;
 attribute float aSize;
 attribute float aPhase;
 uniform mat4 uVP;
-uniform float uPixScale, uTime, uMinPx, uMaxPx;
+uniform float uPixScale, uTime, uMinPx, uMaxPx, uCull;
 varying float vTw;
 void main() {
   gl_Position = uVP * vec4(aPos, 1.0);
   float px = uPixScale * aSize / max(gl_Position.w, 1e-4);
+  if (px < uCull) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }  // true-scale: cull sub-pixel bodies (drivers floor PointSize at 1px)
   gl_PointSize = clamp(px, uMinPx, uMaxPx);
   vTw = aPhase > 0.0 ? 0.72 + 0.28 * sin(uTime * 1.8 + aPhase * 7.0) : 1.0;
 }`;
@@ -452,6 +454,7 @@ const PT = {
   uTime: gl.getUniformLocation(ptProg, "uTime"),
   uMinPx: gl.getUniformLocation(ptProg, "uMinPx"),
   uMaxPx: gl.getUniformLocation(ptProg, "uMaxPx"),
+  uCull: gl.getUniformLocation(ptProg, "uCull"),
   uColor: gl.getUniformLocation(ptProg, "uColor"),
   uAlpha: gl.getUniformLocation(ptProg, "uAlpha"),
 };
@@ -858,6 +861,36 @@ const eye = new Float64Array(3);
 let lastFrame = performance.now();
 let simAtLastPropagate = NaN;
 
+// True-scale: real physical radii (au) fed into the point-size attribute. The
+// shader already projects size·focalPx/distance, so real radii make most bodies
+// shrink to sub-pixel and vanish — the honest emptiness of space. Built lazily.
+const PLANET_RADIUS_KM = [2439.7, 6051.8, 6371.0, 3389.5, 69911, 58232, 25362, 24622];
+const SUN_RADIUS_KM = 695700;
+let sunTrueSizeBuf = null, trueSizesBuilt = false;
+function ensureTrueSizes() {
+  for (let i = 0; i < planetState.length; i++)
+    planetState[i].trueSizeBuf = makeBuffer(new Float32Array([PLANET_RADIUS_KM[i] / AU_KM]));
+  sunTrueSizeBuf = makeBuffer(new Float32Array([SUN_RADIUS_KM / AU_KM]));
+  for (const g of groups) {
+    if (!g.count) continue;
+    const a = new Float32Array(g.count);
+    for (let k = 0; k < g.count; k++) {
+      const m = g.meta[k];
+      const alb = isFinite(m.albedo) && m.albedo > 0 ? m.albedo : 0.14;
+      const dkm = isFinite(m.diam) ? m.diam
+        : isFinite(m.H) ? 1329 / Math.sqrt(alb) * Math.pow(10, -m.H / 5) : 1;
+      a[k] = (dkm * 0.5) / AU_KM;
+    }
+    g.trueSizeBuf = makeBuffer(a);
+  }
+  if (moons.count) {
+    const a = new Float32Array(moons.count);
+    for (let k = 0; k < moons.count; k++) a[k] = (moons.meta[k].radius || 1) / AU_KM;
+    moons.trueSizeBuf = makeBuffer(a);
+  }
+  trueSizesBuilt = true;
+}
+
 function render(now) {
   const dt = Math.min((now - lastFrame) / 1000, 0.25);
   lastFrame = now;
@@ -980,6 +1013,7 @@ function render(now) {
   gl.uniformMatrix4fv(PT.uVP, false, vpSky);   // stars ride the rotation-only dome
   gl.uniform1f(PT.uPixScale, pixScale);
   gl.uniform1f(PT.uTime, timeS);
+  gl.uniform1f(PT.uCull, 0);          // default: never cull (true-scale blocks set it per-draw)
 
   // stars (sizes are in px, not world units: fake it with min=max clamp window)
   gl.uniform1f(PT.uMinPx, 0.6 * dpr);
@@ -998,9 +1032,14 @@ function render(now) {
   gl.drawArrays(gl.POINTS, 0, starsWarm.count);
   gl.uniformMatrix4fv(PT.uVP, false, vp);      // back to world space
 
+  // true-scale: real angular sizes — tiny bodies vanish (built lazily on first use)
+  const ts = state.trueScale;
+  if (ts && !trueSizesBuilt) ensureTrueSizes();
+
   // asteroids
-  gl.uniform1f(PT.uMinPx, 1.25 * dpr);
-  gl.uniform1f(PT.uMaxPx, 9 * dpr);
+  gl.uniform1f(PT.uMinPx, ts ? 0 : 1.25 * dpr);
+  gl.uniform1f(PT.uMaxPx, ts ? 40 * dpr : 9 * dpr);
+  gl.uniform1f(PT.uCull, ts ? 1 : 0);   // true-scale: vanish unless zoomed onto a real body
   for (const g of groups) {
     if (!g.count || !g.visible) continue;
     if (g.dirty) {
@@ -1010,7 +1049,7 @@ function render(now) {
     }
     gl.uniform3f(PT.uColor, g.color[0], g.color[1], g.color[2]);
     gl.uniform1f(PT.uAlpha, 0.85);
-    bindPointAttrs(g.posBuf, g.sizeBuf, null, 0);
+    bindPointAttrs(g.posBuf, ts ? g.trueSizeBuf : g.sizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, g.count);
   }
 
@@ -1056,11 +1095,12 @@ function render(now) {
       gl.bufferData(gl.ARRAY_BUFFER, moons.pos, gl.DYNAMIC_DRAW);
       moons.dirty = false;
     }
-    gl.uniform1f(PT.uMinPx, 1.4 * dpr);
-    gl.uniform1f(PT.uMaxPx, 10 * dpr);
+    gl.uniform1f(PT.uMinPx, ts ? 0 : 1.4 * dpr);
+    gl.uniform1f(PT.uMaxPx, ts ? 40 * dpr : 10 * dpr);
+    gl.uniform1f(PT.uCull, ts ? 1 : 0);
     gl.uniform3f(PT.uColor, 0.78, 0.84, 0.94);
     gl.uniform1f(PT.uAlpha, 0.95);
-    bindPointAttrs(moons.posBuf, moons.sizeBuf, null, 0);
+    bindPointAttrs(moons.posBuf, ts ? moons.trueSizeBuf : moons.sizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, moons.count);
   }
 
@@ -1093,23 +1133,25 @@ function render(now) {
 
   // planets
   if (state.showPlanets) {
-    gl.uniform1f(PT.uMinPx, 2.5 * dpr);
-    gl.uniform1f(PT.uMaxPx, 26 * dpr);
+    gl.uniform1f(PT.uMinPx, ts ? 1.5 * dpr : 2.5 * dpr);   // keep planets as faint points in true-scale
+    gl.uniform1f(PT.uMaxPx, ts ? 200 * dpr : 26 * dpr);
+    gl.uniform1f(PT.uCull, 0);
     for (const ps of planetState) {
       gl.uniform3f(PT.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
       gl.uniform1f(PT.uAlpha, 1.0);
-      bindPointAttrs(ps.posBuf, ps.sizeBuf, null, 0);
+      bindPointAttrs(ps.posBuf, ts ? ps.trueSizeBuf : ps.sizeBuf, null, 0);
       gl.drawArrays(gl.POINTS, 0, 1);
     }
   }
 
   // sun core
   if (state.showSun) {
-    gl.uniform1f(PT.uMinPx, 10 * dpr);
-    gl.uniform1f(PT.uMaxPx, 58 * dpr);
+    gl.uniform1f(PT.uMinPx, ts ? 3 * dpr : 10 * dpr);      // Sun stays a visible anchor
+    gl.uniform1f(PT.uMaxPx, ts ? 1024 * dpr : 58 * dpr);
+    gl.uniform1f(PT.uCull, 0);
     gl.uniform3f(PT.uColor, 1.0, 0.93, 0.78);
     gl.uniform1f(PT.uAlpha, 1.0);
-    bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
+    bindPointAttrs(sunBuf, ts ? sunTrueSizeBuf : sunSizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, 1);
   }
 
@@ -2124,6 +2166,10 @@ function renderLegend() {
 
   // overlay toggles (not populations)
   const overlays = [
+    { label: "True scale", always: true, css: "#7dd3fc", count: "—",
+      desc: "Render every body at its real angular size instead of an exaggerated dot. The Sun and planets shrink to faint points; asteroids and moons vanish entirely — the honest emptiness of space. (They're still searchable and clickable.)",
+      get on() { return state.trueScale; },
+      toggle() { state.trueScale = !state.trueScale; } },
     { label: "Highlight PHAs", count: phaList.length, css: "#ff7e2a",
       desc: "Potentially Hazardous Asteroids — larger than ~140 m with orbits passing within 0.05 au (~19 lunar distances) of Earth's orbit. Lights them up in orange.",
       get on() { return state.showPHA; },
