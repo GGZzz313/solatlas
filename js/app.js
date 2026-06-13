@@ -465,6 +465,60 @@ const LN = {
   uAlpha: gl.getUniformLocation(lnProg, "uAlpha"),
 };
 
+// Textured, Lambert-lit sphere for the focused planet (Sun at world origin).
+const SPHERE_VS = `
+attribute vec3 aPos; attribute vec3 aNorm; attribute vec2 aUV;
+uniform mat4 uMVP, uModel;
+varying vec3 vN; varying vec3 vW; varying vec2 vUV;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  vN = mat3(uModel) * aNorm;            // uniform scale → fine as a normal basis
+  vW = (uModel * vec4(aPos, 1.0)).xyz;  // world position; Sun is at the origin
+  vUV = aUV;
+}`;
+const SPHERE_FS = `
+precision mediump float;
+uniform sampler2D uTex; uniform float uAmbient, uAlpha;
+varying vec3 vN; varying vec3 vW; varying vec2 vUV;
+void main() {
+  vec3 N = normalize(vN);
+  vec3 L = normalize(-vW);              // toward the Sun (origin)
+  float d = max(dot(N, L), 0.0);
+  vec3 c = texture2D(uTex, vUV).rgb * (uAmbient + (1.0 - uAmbient) * d);
+  gl_FragColor = vec4(c, uAlpha);
+}`;
+// Procedural ring disc (no texture): radius set per-planet via uR0/uR1.
+const RING_VS = `
+attribute vec3 aRing;                   // x=cosθ, y=sinθ, z=t (0 inner → 1 outer)
+uniform mat4 uMVP; uniform float uR0, uR1;
+varying float vR;
+void main() {
+  float rad = mix(uR0, uR1, aRing.z);
+  gl_Position = uMVP * vec4(aRing.x * rad, aRing.y * rad, 0.0, 1.0);
+  vR = aRing.z;
+}`;
+const RING_FS = `
+precision mediump float;
+uniform vec3 uColor; uniform float uAlpha, uCassini;
+varying float vR;
+void main() {
+  float edge = smoothstep(0.0, 0.05, vR) * smoothstep(1.0, 0.93, vR);
+  float gap = 1.0 - uCassini * (1.0 - smoothstep(0.04, 0.10, abs(vR - 0.55)));
+  gl_FragColor = vec4(uColor, uAlpha * edge * gap);
+}`;
+const spProg = program(SPHERE_VS, SPHERE_FS);
+const rnProg = program(RING_VS, RING_FS);
+const SP = {
+  aPos: gl.getAttribLocation(spProg, "aPos"), aNorm: gl.getAttribLocation(spProg, "aNorm"), aUV: gl.getAttribLocation(spProg, "aUV"),
+  uMVP: gl.getUniformLocation(spProg, "uMVP"), uModel: gl.getUniformLocation(spProg, "uModel"),
+  uTex: gl.getUniformLocation(spProg, "uTex"), uAmbient: gl.getUniformLocation(spProg, "uAmbient"), uAlpha: gl.getUniformLocation(spProg, "uAlpha"),
+};
+const RN = {
+  aRing: gl.getAttribLocation(rnProg, "aRing"),
+  uMVP: gl.getUniformLocation(rnProg, "uMVP"), uR0: gl.getUniformLocation(rnProg, "uR0"), uR1: gl.getUniformLocation(rnProg, "uR1"),
+  uColor: gl.getUniformLocation(rnProg, "uColor"), uAlpha: gl.getUniformLocation(rnProg, "uAlpha"), uCassini: gl.getUniformLocation(rnProg, "uCassini"),
+};
+
 gl.disable(gl.DEPTH_TEST);
 gl.enable(gl.BLEND);
 gl.blendFunc(gl.ONE, gl.ONE);   // additive — glowing space dust
@@ -537,6 +591,130 @@ function makeBuffer(data, usage) {
   gl.bindBuffer(gl.ARRAY_BUFFER, b);
   gl.bufferData(gl.ARRAY_BUFFER, data, usage || gl.STATIC_DRAW);
   return b;
+}
+function makeIndexBuffer(arr) {
+  const e = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, e);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(arr), gl.STATIC_DRAW);
+  return e;
+}
+
+/* ---- focused-planet sphere + rings (lazy textures, depth-bracketed draw) ---- */
+function buildUVSphere(LAT, LON) {
+  const pos = [], nrm = [], uv = [], idx = [];
+  for (let y = 0; y <= LAT; y++) {
+    const v = y / LAT, th = v * Math.PI, st = Math.sin(th), ct = Math.cos(th);
+    for (let x = 0; x <= LON; x++) {
+      const u = x / LON, ph = u * TWO_PI, nx = Math.cos(ph) * st, ny = Math.sin(ph) * st, nz = ct;
+      pos.push(nx, ny, nz); nrm.push(nx, ny, nz); uv.push(u, v);
+    }
+  }
+  const row = LON + 1;
+  for (let y = 0; y < LAT; y++) for (let x = 0; x < LON; x++) {
+    const a = y * row + x, b = a + row;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  return { posBuf: makeBuffer(new Float32Array(pos)), normBuf: makeBuffer(new Float32Array(nrm)),
+           uvBuf: makeBuffer(new Float32Array(uv)), idxBuf: makeIndexBuffer(idx), count: idx.length };
+}
+function buildRingMesh(SEG) {
+  const v = [], idx = [];
+  for (let s = 0; s <= SEG; s++) { const a = s / SEG * TWO_PI, ca = Math.cos(a), sa = Math.sin(a); v.push(ca, sa, 0, ca, sa, 1); }
+  for (let s = 0; s < SEG; s++) { const i = s * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
+  return { buf: makeBuffer(new Float32Array(v)), idxBuf: makeIndexBuffer(idx), count: idx.length };
+}
+const SPHERE_MESH = buildUVSphere(48, 96);
+const RING_MESH = buildRingMesh(160);
+
+const planetTex = {};
+function loadTex(file) {
+  if (planetTex[file]) return planetTex[file];
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([90, 92, 100, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const img = new Image();
+  img.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);   // equirectangular maps are top-down
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);     // NPOT-safe: no mipmap
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  };
+  img.src = "img/bodies/" + file;
+  return (planetTex[file] = t);
+}
+
+// axial obliquity to orbit (deg) — fixed-axis tilt about world X (no node data → approximation)
+const PLANET_TILT = [0.034, 177.4, 23.44, 25.19, 3.13, 26.73, 97.77, 28.32];
+// rings, radii in planet-radii: Saturn full system; the others a faint band
+const RING_DEF = {
+  4: { r0: 1.4, r1: 1.8, col: [0.85, 0.80, 0.70], a: 0.05, cas: 0 },     // Jupiter
+  5: { r0: 1.18, r1: 2.27, col: [0.86, 0.80, 0.66], a: 0.6, cas: 0.5 },  // Saturn
+  6: { r0: 1.6, r1: 2.0, col: [0.70, 0.85, 0.88], a: 0.08, cas: 0 },     // Uranus
+  7: { r0: 1.6, r1: 2.0, col: [0.60, 0.70, 1.0], a: 0.07, cas: 0 },      // Neptune
+};
+const _planetProj = new Float32Array(16), _planetVP = new Float32Array(16);
+const _sphereM = new Float32Array(16), _sphereMVP = new Float32Array(16);
+const _ringM = new Float32Array(16), _ringMVP = new Float32Array(16);
+function smoothstep(a, b, x) { x = clamp((x - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); }
+// model matrix: translate(p) · Rx(tilt) · scale(s), column-major
+function tiltM(out, p, ct, st, s) {
+  out[0] = s; out[1] = 0; out[2] = 0; out[3] = 0;
+  out[4] = 0; out[5] = ct * s; out[6] = st * s; out[7] = 0;
+  out[8] = 0; out[9] = -st * s; out[10] = ct * s; out[11] = 0;
+  out[12] = p[0]; out[13] = p[1]; out[14] = p[2]; out[15] = 1;
+  return out;
+}
+function bindSphere() {
+  gl.bindBuffer(gl.ARRAY_BUFFER, SPHERE_MESH.posBuf); gl.enableVertexAttribArray(SP.aPos); gl.vertexAttribPointer(SP.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, SPHERE_MESH.normBuf); gl.enableVertexAttribArray(SP.aNorm); gl.vertexAttribPointer(SP.aNorm, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, SPHERE_MESH.uvBuf); gl.enableVertexAttribArray(SP.aUV); gl.vertexAttribPointer(SP.aUV, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, SPHERE_MESH.idxBuf);
+}
+// the whole pipeline runs depth-off + additive; bracket the solid sphere/rings
+// with depth-test + alpha blend, then restore exactly (or the next frame breaks).
+function drawFocusedPlanet(fi, sphereA) {
+  const ps = planetState[fi];
+  const rAU = (PLANET_FACTS[fi].d * 0.5) / AU_KM;
+  const th = PLANET_TILT[fi] * DEG, ct = Math.cos(th), st = Math.sin(th);
+  // dedicated tight projection so the tiny sphere/rings get usable depth precision
+  mat4Perspective(_planetProj, FOV, canvas.width / canvas.height, Math.max(state.cam.dist * 0.1, 1e-6), state.cam.dist * 4 + rAU * 8);
+  mat4Mul(_planetVP, _planetProj, view);
+  tiltM(_sphereM, ps.pos, ct, st, rAU);
+  mat4Mul(_sphereMVP, _planetVP, _sphereM);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(spProg);
+  gl.uniformMatrix4fv(SP.uMVP, false, _sphereMVP);
+  gl.uniformMatrix4fv(SP.uModel, false, _sphereM);
+  gl.uniform1f(SP.uAmbient, 0.13);   // night side dim-but-visible so the full disc reads
+  gl.uniform1f(SP.uAlpha, sphereA);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, loadTex(PLANET_IMG[fi][0])); gl.uniform1i(SP.uTex, 0);
+  bindSphere();
+  gl.drawElements(gl.TRIANGLES, SPHERE_MESH.count, gl.UNSIGNED_SHORT, 0);
+  const rd = RING_DEF[fi];
+  if (rd) {
+    tiltM(_ringM, ps.pos, ct, st, 1);
+    mat4Mul(_ringMVP, _planetVP, _ringM);
+    gl.depthMask(false);                 // translucent rings: test against the sphere, don't self-sort
+    gl.useProgram(rnProg);
+    gl.uniformMatrix4fv(RN.uMVP, false, _ringMVP);
+    gl.uniform1f(RN.uR0, rAU * rd.r0); gl.uniform1f(RN.uR1, rAU * rd.r1);
+    gl.uniform3fv(RN.uColor, rd.col); gl.uniform1f(RN.uAlpha, rd.a * sphereA); gl.uniform1f(RN.uCassini, rd.cas);
+    gl.bindBuffer(gl.ARRAY_BUFFER, RING_MESH.buf); gl.enableVertexAttribArray(RN.aRing); gl.vertexAttribPointer(RN.aRing, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, RING_MESH.idxBuf);
+    gl.drawElements(gl.TRIANGLES, RING_MESH.count, gl.UNSIGNED_SHORT, 0);
+    gl.depthMask(true);
+  }
+  gl.disable(gl.DEPTH_TEST);
+  gl.blendFunc(gl.ONE, gl.ONE);          // restore the global additive state
+  gl.useProgram(ptProg); gl.uniformMatrix4fv(PT.uVP, false, vp);   // hand back to the point pipeline
 }
 
 function makeStars(count, banded) {
@@ -1174,18 +1352,28 @@ function render(now) {
     }
   }
 
+  // focused planet → a lit sphere fades in over the sprite as you approach
+  const fpi = (state.focus && state.focus.planet != null) ? state.focus.planet : -1;
+  let sphereA = 0;
+  if (fpi >= 0) {
+    const rAU = (PLANET_FACTS[fpi].d * 0.5) / AU_KM;
+    sphereA = smoothstep(2, 6, pixScale * rAU / Math.max(state.cam.dist, 1e-6));
+  }
+
   // planets
   if (state.showPlanets) {
     gl.uniform1f(PT.uMinPx, ts ? 1.5 * dpr : 2.5 * dpr);   // keep planets as faint points in true-scale
     gl.uniform1f(PT.uMaxPx, ts ? 200 * dpr : 26 * dpr);
     gl.uniform1f(PT.uCull, 0);
-    for (const ps of planetState) {
+    for (let i = 0; i < planetState.length; i++) {
+      const ps = planetState[i];
       gl.uniform3f(PT.uColor, ps.def.color[0], ps.def.color[1], ps.def.color[2]);
-      gl.uniform1f(PT.uAlpha, 1.0);
+      gl.uniform1f(PT.uAlpha, i === fpi ? 1 - sphereA : 1.0);   // fade the sprite under the lit sphere
       bindPointAttrs(ps.posBuf, ts ? ps.trueSizeBuf : ps.sizeBuf, null, 0);
       gl.drawArrays(gl.POINTS, 0, 1);
     }
   }
+  if (fpi >= 0 && sphereA > 0.004) drawFocusedPlanet(fpi, sphereA);
 
   // sun core
   if (state.showSun) {
