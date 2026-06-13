@@ -68,7 +68,7 @@ const BODIES = [
   ["charon", "Charon_(moon)", "NASA/JHUAPL/SwRI · New Horizons"],
 ];
 
-const UA = "AsteroidAtlas/1.0 (https://github.com/GGZzz313/test1; educational project)";
+const UA = "SolAtlas/1.0 (https://github.com/GGZzz313/solatlas; educational project)";
 const sleep = (ms) => new Promise((f) => setTimeout(f, ms));
 
 async function getWithRetry(url, accept) {

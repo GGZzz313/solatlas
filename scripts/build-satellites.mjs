@@ -26,7 +26,7 @@ const DEBRIS_GROUPS = ["fengyun-1c-debris", "cosmos-2251-debris", "iridium-33-de
 const gpURL = (g) => `https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`;
 
 async function fetchTLE(url) {
-  const r = await fetch(url, { headers: { "User-Agent": "AsteroidAtlas/1.0 (educational)" } });
+  const r = await fetch(url, { headers: { "User-Agent": "SolAtlas/1.0 (educational)" } });
   if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
   const txt = await r.text();
   if (/GP data has not updated|Invalid query|^<!DOCTYPE/i.test(txt.slice(0, 200)))
