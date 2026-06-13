@@ -37,6 +37,10 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 - **Planets are first-class too** — click or search any planet for its live orbital
   elements, diameter, rotation, moon count and a real photo; double-click space to
   return to the Sun.
+- **In-flight spacecraft** — humanity's deep-space probes (Voyager 1 & 2, Pioneer 10 &
+  11, New Horizons, Parker Solar Probe, Lucy, Psyche) on their real flight paths from
+  JPL Horizons. The Voyagers are out past 165 au, coasting toward the interstellar-space
+  signpost; click any probe for its live distance, speed and mission status.
 - **Earth's artificial moons** — fly down to Earth and the ~15,700 active satellites
   from CelesTrak appear, propagated live with SGP4: the dense LEO swarm, the GPS/MEO
   ring and the geostationary belt. Click any one (the ISS, a Starlink, a GEO bird) for
@@ -68,7 +72,7 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 | [JPL Small-Body Database Query API](https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html) | Orbital elements, magnitudes, diameters, albedo, rotation, spectral class and orbit classes for ~50k asteroids **and comets** (NEOs, main belt, trojans, centaurs, TNOs, comets) |
 | [JPL CNEOS Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) | Earth-impact risk table (Torino/Palermo scale, probabilities) |
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
-| [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Orbital elements for all ~457 planetary moons (relative to their parent planet) |
+| [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Orbital elements for all ~457 planetary moons, and flight-path vectors for in-flight spacecraft |
 | [CelesTrak](https://celestrak.org/NORAD/elements/) | Active-satellite TLEs (refreshed daily, propagated client-side with SGP4) |
 | [JPL Approximate Planetary Ephemeris](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | Planet positions (embedded Keplerian elements + rates) |
 

@@ -305,6 +305,7 @@ const state = {
   selMoon: null,           // selected moon index
   selSun: false,           // the Sun is selected
   selSat: null,            // selected satellite index
+  selCraft: null,          // selected spacecraft index
   showSun: true,           // Sun population (point, halo, picking)
   focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
   camEaseRate: 9,          // lowered during the launch dolly-in, restored after
@@ -359,6 +360,16 @@ const sats = {
   sliceCursor: 0, fullUpdate: true,
   epochJD: 0,                    // snapshot reference epoch (TLEs valid near here)
 };
+
+// In-flight deep-space probes (Horizons trajectory polylines, interpolated).
+const craft = [];                // { name, info, jd, verts, n, pos, inRange, trajBuf, posBuf, sizeBuf, labelEl }
+const CRAFT_CSS = "#8ef0b0";     // spacecraft population colour (green)
+let craftVisible = true;
+let satCountKnown = 0;           // satellites (from the tiny count file or full load)
+// header "man-made" tally = satellites + in-flight spacecraft
+function updateManMade() {
+  $("stat-craft").textContent = (satCountKnown + craft.length).toLocaleString("en-US");
+}
 
 /* ============================================================
    4. WebGL renderer
@@ -860,6 +871,11 @@ function render(now) {
     }
     updateMoonPositions(state.simJD);
     if (state.selMoon != null) buildMoonOrbit(state.selMoon);
+    for (const c of craft) {
+      craftPositionAt(c, state.simJD);
+      gl.bindBuffer(gl.ARRAY_BUFFER, c.posBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, c.pos, gl.DYNAMIC_DRAW);
+    }
     satMoved = true;
   }
 
@@ -934,6 +950,18 @@ function render(now) {
     gl.uniform3f(LN.uColor, 0.75, 0.82, 0.95);
     gl.uniform1f(LN.uAlpha, 0.5);
     gl.drawArrays(gl.LINE_LOOP, 0, moonOrbitCount);
+  }
+  // spacecraft flight paths
+  if (craftVisible) {
+    for (let i = 0; i < craft.length; i++) {
+      const c = craft[i];
+      gl.bindBuffer(gl.ARRAY_BUFFER, c.trajBuf);
+      gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
+      const sel = state.selCraft === i;
+      gl.uniform3f(LN.uColor, 0.56, 0.94, 0.69);
+      gl.uniform1f(LN.uAlpha, sel ? 0.7 : 0.22);
+      gl.drawArrays(gl.LINE_STRIP, 0, c.n);
+    }
   }
 
   /* ---- points ---- */
@@ -1063,6 +1091,19 @@ function render(now) {
     gl.uniform1f(PT.uAlpha, 1.0);
     bindPointAttrs(sunBuf, sunSizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, 1);
+  }
+
+  // spacecraft markers
+  if (craftVisible) {
+    gl.uniform1f(PT.uMinPx, 3.5 * dpr);
+    gl.uniform1f(PT.uMaxPx, 10 * dpr);
+    gl.uniform3f(PT.uColor, 0.56, 0.94, 0.69);
+    gl.uniform1f(PT.uAlpha, 1.0);
+    for (const c of craft) {
+      if (!c.inRange) continue;
+      bindPointAttrs(c.posBuf, c.sizeBuf, null, 0);
+      gl.drawArrays(gl.POINTS, 0, 1);
+    }
   }
 
   updateOverlays(pixScale);
@@ -1196,6 +1237,20 @@ function updateOverlays(pixScale) {
     ml.el.style.opacity = show ? "0.85" : "0";
     if (show) ml.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
+  // spacecraft labels (always-on while the craft is in its data window)
+  for (const c of craft) {
+    if (!c.labelEl) {
+      c.labelEl = document.createElement("div");
+      c.labelEl.className = "pl-label craft-label";
+      c.labelEl.textContent = c.name;
+      labelsEl.appendChild(c.labelEl);
+    }
+    if (!craftVisible || !c.inRange) { c.labelEl.style.opacity = "0"; continue; }
+    const p = project(c.pos[0], c.pos[1], c.pos[2]);
+    const show = p && p[0] > -60 && p[0] < cssW + 60 && p[1] > -20 && p[1] < cssH + 20;
+    c.labelEl.style.opacity = show ? "0.9" : "0";
+    if (show) c.labelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+  }
   // region labels (Kuiper Belt, Oort cloud, interstellar space, Alpha Cen)
   for (const rl of REGION_LABELS) {
     if (!rl.el) {
@@ -1236,8 +1291,24 @@ function updateOverlays(pixScale) {
     const k = state.selSat;
     selPos = [sats.pos[k * 3], sats.pos[k * 3 + 1], sats.pos[k * 3 + 2]];
     selName = sats.names[k];
+  } else if (state.selCraft != null && craft[state.selCraft].inRange) {
+    const c = craft[state.selCraft];
+    selPos = [c.pos[0], c.pos[1], c.pos[2]];
+    selName = c.name;
   }
   if (selPos && state.selSat == null) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
+  // live distance + speed for a selected spacecraft
+  if (state.selCraft != null) {
+    const c = craft[state.selCraft];
+    if (c.inRange) {
+      const f = craftFacts(c);
+      $("craft-r").textContent = f.r.toFixed(2) + " au";
+      $("craft-v").textContent = isFinite(f.v) ? f.v.toFixed(1) + " km/s" : "—";
+    } else {
+      $("craft-r").textContent = "outside data range";
+      $("craft-v").textContent = "—";
+    }
+  }
   updateScaleBar();
   updateZoomBar();
   if (selPos) {
@@ -1608,7 +1679,8 @@ function loadSatellites() {
     sats.loaded = true;
     sats.loading = false;
     sats.fullUpdate = true;
-    $("stat-craft").textContent = sats.count.toLocaleString("en-US");
+    satCountKnown = sats.count;
+    updateManMade();
     renderLegend();
     // if we're already at Earth, surface the count badge now that data's in
     if (state.selPlanet === EARTH_IDX && !$("info-badges").querySelector(".badge-sat")) {
@@ -1653,6 +1725,55 @@ function updateSatellites(jd) {
   sats.dirty = true;
 }
 
+// Spacecraft trajectories from Horizons → flat arrays for interpolation.
+function ingestCraft(data) {
+  craft.length = 0;
+  const list = (data && data.craft) || [];
+  for (const c of list) {
+    const raw = c.points || [];
+    const n = raw.length;
+    if (!n) continue;
+    const jd = new Float64Array(n);
+    const verts = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      jd[i] = raw[i][0];
+      verts[i * 3] = raw[i][1]; verts[i * 3 + 1] = raw[i][2]; verts[i * 3 + 2] = raw[i][3];
+    }
+    craft.push({
+      name: c.name, info: c, jd, verts, n,
+      pos: new Float32Array(3), inRange: false,
+      trajBuf: makeBuffer(verts),
+      posBuf: makeBuffer(new Float32Array(3), gl.DYNAMIC_DRAW),
+      sizeBuf: makeBuffer(new Float32Array([0.06])),
+      labelEl: null,
+    });
+  }
+  return craft.length;
+}
+// linear-interpolate a craft's heliocentric position at sim JD
+function craftPositionAt(c, jd) {
+  if (jd < c.jd[0] || jd > c.jd[c.n - 1]) { c.inRange = false; return; }
+  c.inRange = true;
+  let lo = 0, hi = c.n - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= jd) lo = mid; else hi = mid; }
+  const t0 = c.jd[lo], t1 = c.jd[hi];
+  const f = t1 > t0 ? (jd - t0) / (t1 - t0) : 0;
+  for (let d = 0; d < 3; d++) c.pos[d] = c.verts[lo * 3 + d] + (c.verts[hi * 3 + d] - c.verts[lo * 3 + d]) * f;
+}
+function craftFacts(c) {
+  const r = Math.hypot(c.pos[0], c.pos[1], c.pos[2]);
+  // speed from the bracketing samples (au/day → km/s)
+  let lo = 0, hi = c.n - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c.jd[mid] <= state.simJD) lo = mid; else hi = mid; }
+  const dt = c.jd[hi] - c.jd[lo];
+  let v = NaN;
+  if (dt > 0) {
+    const dx = c.verts[hi * 3] - c.verts[lo * 3], dy = c.verts[hi * 3 + 1] - c.verts[lo * 3 + 1], dz = c.verts[hi * 3 + 2] - c.verts[lo * 3 + 2];
+    v = Math.hypot(dx, dy, dz) / dt * 1731.46;   // 1 au/day = 1731.46 km/s
+  }
+  return { r, v };
+}
+
 // derive orbit regime + altitudes from a satrec for the info card
 function satFacts(k) {
   const rec = sats.recs[k];
@@ -1676,9 +1797,10 @@ async function loadAsteroids() {
   status.textContent = "downloading NASA/JPL data snapshot…";
   fill.style.width = "15%";
   try {
-    const [snap, moonData] = await Promise.all([
+    const [snap, moonData, craftData] = await Promise.all([
       fetchJSON(DATA_URL),
-      fetchJSON("data/moons.json").catch(() => null),   // moons are optional
+      fetchJSON("data/moons.json").catch(() => null),       // moons are optional
+      fetchJSON("data/spacecraft.json").catch(() => null),  // spacecraft optional
     ]);
     fill.style.width = "60%";
     status.textContent = "propagating orbits…";
@@ -1691,9 +1813,11 @@ async function loadAsteroids() {
     buildDwarfList();
     buildPhaList();
     buildMoons(moonData);
+    ingestCraft(craftData);
     // the headline "natural objects" counts the small bodies plus moons,
-    // the eight planets and the Sun (satellites are tallied separately)
+    // the eight planets and the Sun (satellites/spacecraft are tallied separately)
     state.totalLoaded += moons.count + planetState.length + 1;
+    updateManMade();
     renderLegend();
     fill.style.width = "100%";
     const total = +snap.totalKnown;
@@ -1908,6 +2032,10 @@ function renderLegend() {
       desc: "Active artificial satellites — Earth's man-made moons, from CelesTrak (live TLEs, propagated with SGP4). Click Earth to fly down and see the LEO swarm, the GPS/MEO ring and the geostationary belt. Positions are only accurate near the present, so the layer fades if you time-travel far.",
       get on() { return sats.visible; },
       toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null) clearSelection(); } },
+    { label: "Spacecraft", count: craft.length, css: CRAFT_CSS,
+      desc: "Humanity's in-flight deep-space probes — Voyager 1 & 2, the Pioneers, New Horizons, Parker Solar Probe, Lucy and Psyche — with their real flight paths from JPL Horizons. The Voyagers are out past the planets, heading toward interstellar space.",
+      get on() { return craftVisible; },
+      toggle() { craftVisible = !craftVisible; if (!craftVisible && state.selCraft != null) clearSelection(); } },
   ];
   for (const o of overlays) {
     if (!o.always && !o.count) continue;
@@ -1941,6 +2069,7 @@ function selectObject(gi, k) {
   state.selMoon = null;
   state.selSun = false;
   state.selSat = null;
+  state.selCraft = null;
   satLayout(false);
   // selecting a small body with its own moons (Pluto) focuses the camera on it
   if (plutoRef && gi === plutoRef[0] && k === plutoRef[1]) focusOn({ small: plutoRef });
@@ -2038,6 +2167,7 @@ function selectPlanet(i) {
   state.selMoon = null;
   state.selSun = false;
   state.selSat = null;
+  state.selCraft = null;
   satLayout(false);
   selOrbitCount = 0;
   focusOn({ planet: i });
@@ -2074,6 +2204,7 @@ function selectSun() {
   state.selPlanet = null;
   state.selMoon = null;
   state.selSat = null;
+  state.selCraft = null;
   satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
@@ -2099,17 +2230,23 @@ function selectSun() {
 }
 
 // satellites use a dedicated panel layout; toggle it vs the body grid/preview
-function satLayout(on) {
-  $("info-sat").hidden = !on;
-  $("info-grid").hidden = on;
-  $("info-preview").hidden = on;
+// swap the card body between the default grid+preview, the satellite block,
+// and the spacecraft block. mode: "body" | "sat" | "craft"
+function panelMode(mode) {
+  $("info-grid").hidden = mode !== "body";
+  $("info-preview").hidden = mode !== "body";
+  $("info-sat").hidden = mode !== "sat";
+  $("info-craft").hidden = mode !== "craft";
 }
+const satLayout = (on) => panelMode(on ? "sat" : "body");
+
 function selectSatellite(k) {
   state.selSat = k;
   state.selected = null;
   state.selPlanet = null;
   state.selMoon = null;
   state.selSun = false;
+  state.selCraft = null;
   selOrbitCount = 0;
   moonOrbitCount = 0;
   stopPreview();
@@ -2119,12 +2256,40 @@ function selectSatellite(k) {
   $("info-class").textContent = "Artificial satellite · NORAD " + f.norad;
   $("info-badges").innerHTML = `<span class="badge badge-sat">🛰 ${f.regime}</span>`;
   $("info-link").hidden = true;
-  satLayout(true);
+  panelMode("sat");
   $("sat-regime").textContent = f.regime;
   $("sat-alt").textContent = f.peri < -50 ? "—"
     : Math.round(Math.max(f.peri, 0)).toLocaleString("en-US") + " × " + Math.round(f.apo).toLocaleString("en-US") + " km";
   $("sat-period").textContent = f.periodMin < 1440 ? f.periodMin.toFixed(0) + " min" : (f.periodMin / 1440).toFixed(2) + " days";
   $("sat-inc").textContent = f.inc.toFixed(1) + "°";
+  $("panel-info").hidden = false;
+}
+
+function selectCraft(i) {
+  const c = craft[i];
+  if (!c) return;
+  state.selCraft = i;
+  state.selected = null;
+  state.selPlanet = null;
+  state.selMoon = null;
+  state.selSun = false;
+  state.selSat = null;
+  selOrbitCount = 0;
+  moonOrbitCount = 0;
+  stopPreview();
+  const info = c.info;
+  setCardAccent(CRAFT_CSS);
+  $("info-name").textContent = c.name;
+  $("info-class").textContent = "Spacecraft" + (info.op ? " · " + info.op : "");
+  $("info-badges").innerHTML = `<span class="badge badge-craft">🚀 In-flight probe</span>`;
+  $("info-link").hidden = true;
+  panelMode("craft");
+  $("craft-note").textContent = info.note || "";
+  $("craft-launch").textContent = info.launch || "—";
+  $("craft-status").textContent = info.status === "silent" ? "silent · still coasting" : "active";
+  const f = craftFacts(c);
+  $("craft-r").textContent = c.inRange ? f.r.toFixed(2) + " au" : "outside data range";
+  $("craft-v").textContent = c.inRange && isFinite(f.v) ? f.v.toFixed(1) + " km/s" : "—";
   $("panel-info").hidden = false;
 }
 
@@ -2135,6 +2300,7 @@ function selectMoon(k) {
   state.selPlanet = null;
   state.selSun = false;
   state.selSat = null;
+  state.selCraft = null;
   satLayout(false);
   selOrbitCount = 0;
   buildMoonOrbit(k);
@@ -2180,6 +2346,7 @@ function clearSelection() {
   state.selMoon = null;
   state.selSun = false;
   state.selSat = null;
+  state.selCraft = null;
   satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
@@ -2422,7 +2589,20 @@ function pickAt(x, y) {
       if (d < bestD) { bestD = d; bestSat = k; bestMoon = -1; bestPlanet = -1; best = null; }
     }
   }
-  if (bestSat >= 0) selectSatellite(bestSat);
+  // spacecraft (in-flight probes)
+  let bestCraft = -1;
+  if (craftVisible) {
+    for (let i = 0; i < craft.length; i++) {
+      const c = craft[i];
+      if (!c.inRange) continue;
+      const p = project(c.pos[0], c.pos[1], c.pos[2]);
+      if (!p) continue;
+      const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; bestCraft = i; bestSat = -1; bestMoon = -1; bestPlanet = -1; best = null; }
+    }
+  }
+  if (bestCraft >= 0) selectCraft(bestCraft);
+  else if (bestSat >= 0) selectSatellite(bestSat);
   else if (bestMoon >= 0) selectMoon(bestMoon);
   else if (bestPlanet >= 0) selectPlanet(bestPlanet);
   else if (bestSun) selectSun();
@@ -2449,6 +2629,12 @@ function runSearch(q) {
     if (moons.meta[k].name.toLowerCase().includes(q)) {
       const kk = k;
       hits.push({ name: moons.meta[k].name + " · " + moons.meta[k].parentName, cls: "MOON", select: () => selectMoon(kk) });
+    }
+  }
+  for (let i = 0; i < craft.length; i++) {
+    if (craft[i].name.toLowerCase().includes(q)) {
+      const ii = i;
+      hits.push({ name: craft[i].name, cls: "CRAFT", select: () => selectCraft(ii) });
     }
   }
   if (sats.loaded) {
@@ -2655,7 +2841,7 @@ loadAsteroids();
 // preload just the satellite COUNT (tiny) so the man-made figure is correct
 // from the first frame, without the 2.5 MB catalogue
 fetchJSON("data/sat-count.json")
-  .then((d) => { if (d && d.count) $("stat-craft").textContent = d.count.toLocaleString("en-US"); })
+  .then((d) => { if (d && d.count) { satCountKnown = d.count; updateManMade(); } })
   .catch(() => {});
 
 })();

@@ -507,12 +507,14 @@ html, body {
 #panel-info { max-height: min(74vh, 640px); overflow-y: auto; scrollbar-width: thin; }
 
 /* ---- satellite info ---- */
-#info-sat[hidden] { display: none; }
+#info-sat[hidden], #info-craft[hidden] { display: none; }
 .sat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .sat-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
 .sat-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
 .sat-src { margin-top: 10px; font-size: 10px; color: var(--ink-dim); font-family: var(--mono); }
+.craft-note { font-size: 12.5px; line-height: 1.5; color: var(--ink); margin-bottom: 12px; }
 .badge-sat { color: #bfe3ff; background: rgba(125, 190, 255, 0.14); }
+.badge-craft { color: #8ef0b0; background: rgba(142, 240, 176, 0.14); }
 
 /* ---- object preview ---- */
 #info-preview {
@@ -577,6 +579,13 @@ html, body {
 }
 .moon-label {
   color: rgba(199, 210, 232, 0.95);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.craft-label {
+  color: rgba(142, 240, 176, 0.95);
   text-transform: none;
   letter-spacing: 0.02em;
   font-family: var(--mono);
