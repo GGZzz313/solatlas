@@ -1158,7 +1158,13 @@ function render(now) {
   const ease = 1 - Math.exp(-dt * state.camEaseRate);
   c.yaw += (c.tYaw - c.yaw) * ease;
   c.pitch += (c.tPitch - c.pitch) * ease;
-  c.dist += (c.tDist - c.dist) * ease;
+  // during the tour, glide distance in LOG space so huge zoom changes sweep
+  // uniformly through every scale (a continuous zoom) instead of snapping the near part
+  if (tourActive && c.dist > 0 && c.tDist > 0) {
+    c.dist = Math.exp(Math.log(c.dist) + (Math.log(c.tDist) - Math.log(c.dist)) * ease);
+  } else {
+    c.dist += (c.tDist - c.dist) * ease;
+  }
   // blend into the focus body once, then track it rigidly — easing the target
   // per-frame would trail a moving planet by more than a zoomed-in view width
   const fp = focusPosition();
@@ -3585,6 +3591,7 @@ function runStep(gen, i) {
   if (i >= TOUR.length) { cancelTour(); return; }
   tourIdx = i; const s = TOUR[i];
   tourStepping = true; s.go(); tourStepping = false;   // the tour's own selects don't self-cancel
+  state.camEaseRate = 1.6;   // slow, opening-style glide between steps instead of a snap
   if (tourHud) tourHud.textContent = s.label + "  ·  " + (i + 1) + " / " + TOUR.length + "  ·  tap or Esc to exit";
   tourTimer = setTimeout(() => runStep(gen, i + 1), s.dwell);
 }
