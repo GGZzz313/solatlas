@@ -1181,8 +1181,11 @@ function updateOverlays(pixScale) {
     sunLabelEl.textContent = "Sun";
     labelsEl.appendChild(sunLabelEl);
   }
-  const sshow = sp && sp[0] > -40 && sp[0] < cssW + 40 && sp[1] > -20 && sp[1] < cssH + 20;
-  sunLabelEl.style.opacity = sshow ? "1" : "0";
+  // fade out as the camera pulls past the planets — otherwise it just sits as an
+  // unreadable smudge on the collapsed inner-system blob (like the planet labels do)
+  const sunFade = clamp(1 - (state.cam.dist - 8) / 12, 0, 1);   // full ≤8 au, gone by ~20 au
+  const sshow = sp && sunFade > 0.02 && sp[0] > -40 && sp[0] < cssW + 40 && sp[1] > -20 && sp[1] < cssH + 20;
+  sunLabelEl.style.opacity = sshow ? sunFade.toFixed(2) : "0";
   if (sshow) sunLabelEl.style.transform = `translate(${sp[0]}px, ${sp[1]}px) translate(-50%,-150%)`;
   // planet labels
   for (const ps of planetState) {
