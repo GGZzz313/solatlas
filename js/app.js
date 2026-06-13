@@ -357,7 +357,7 @@ const sats = {
   debrisVisible: false,          // tracked debris, separate toggle + colour, also off
   payloadCount: 0,               // split index: [0,payloadCount)=payloads, [payloadCount,count)=debris
   count: 0, recs: [], names: [],
-  pos: new Float32Array(0), sizes: new Float32Array(0),
+  pos: new Float32Array(0), rel: new Float32Array(0), sizes: new Float32Array(0),
   posBuf: null, sizeBuf: null, dirty: false,
   sliceCursor: 0, fullUpdate: true,
   epochJD: 0,                    // snapshot reference epoch (TLEs valid near here)
@@ -1699,6 +1699,7 @@ function loadSatellites() {
     sats.count = sats.recs.length;
     sats.payloadCount = data.payloadCount != null ? Math.min(data.payloadCount, sats.count) : sats.count;
     sats.pos = new Float32Array(sats.count * 3);
+    sats.rel = new Float32Array(sats.count * 3);   // Earth-relative offsets (SGP4); pos = ep + rel each frame
     sats.sizes = new Float32Array(sats.count).fill(0.012);
     sats.posBuf = gl.createBuffer();
     sats.sizeBuf = makeBuffer(sats.sizes);
@@ -1735,8 +1736,8 @@ const _satDate = new Date();
 function updateSatellites() {
   if (!sats.count) return;
   _satDate.setTime(Date.now());
-  const ep = planetState[EARTH_IDX].pos;
   const ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ);
+  // SGP4 the EARTH-RELATIVE offsets (TEME→ecliptic au) — expensive, so sliced.
   const slices = sats.fullUpdate ? 1 : SAT_SLICES;
   const span = Math.ceil(sats.count / slices);
   const from = sats.fullUpdate ? 0 : sats.sliceCursor * span;
@@ -1744,14 +1745,24 @@ function updateSatellites() {
   for (let k = from; k < to; k++) {
     const pv = satellite.propagate(sats.recs[k], _satDate);
     const p = pv && pv.position;
-    if (!p || !isFinite(p.x)) { sats.pos[k * 3] = 1e9; continue; }
+    if (!p || !isFinite(p.x)) { sats.rel[k * 3] = 1e9; continue; }
     const xe = p.x / AU_KM, ye = p.y / AU_KM, ze = p.z / AU_KM;
-    sats.pos[k * 3] = ep[0] + xe;
-    sats.pos[k * 3 + 1] = ep[1] + ye * ce + ze * se;
-    sats.pos[k * 3 + 2] = ep[2] - ye * se + ze * ce;
+    sats.rel[k * 3] = xe;
+    sats.rel[k * 3 + 1] = ye * ce + ze * se;
+    sats.rel[k * 3 + 2] = -ye * se + ze * ce;
   }
   sats.sliceCursor = (sats.sliceCursor + 1) % SAT_SLICES;
   sats.fullUpdate = false;
+  // Recombine ALL satellites with the CURRENT Earth position every frame (cheap
+  // additions, no SGP4). Without this, sliced updates bake a stale Earth position
+  // into 3/4 of the points, tearing the swarm into ghost clusters as Earth moves.
+  const ep = planetState[EARTH_IDX].pos;
+  for (let k = 0; k < sats.count; k++) {
+    if (sats.rel[k * 3] > 1e8) { sats.pos[k * 3] = 1e9; continue; }
+    sats.pos[k * 3] = ep[0] + sats.rel[k * 3];
+    sats.pos[k * 3 + 1] = ep[1] + sats.rel[k * 3 + 1];
+    sats.pos[k * 3 + 2] = ep[2] + sats.rel[k * 3 + 2];
+  }
   sats.dirty = true;
 }
 
