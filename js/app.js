@@ -1073,7 +1073,7 @@ function ensureTrueSizes() {
 // Comet tails — the Sun is at the origin, so the anti-sunward direction is just
 // pos/|pos|. Near-perihelion comets (r < TAIL_R0) get an additive streak whose
 // length grows ~1/r; one batched LINES draw covers both comet populations.
-const TAIL_R0 = 3.5, TAIL_LEN = 0.9, TAIL_MAX = 1.4;   // au
+const TAIL_R0 = 3.5, TAIL_LEN = 0.25, TAIL_MAX = 0.35;   // au — short accents, not spears
 let tailVerts = new Float32Array(0), tailBuf = null;
 function drawCometTails() {
   let cap = 0;
