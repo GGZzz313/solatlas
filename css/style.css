@@ -572,6 +572,7 @@ html, body {
 .region-clickable { cursor: pointer; transition: color 0.15s, text-shadow 0.15s; }
 .region-clickable:hover { color: #d3dcef; text-shadow: 0 0 12px rgba(154, 167, 196, 0.65); }
 .kuiper-label { color: rgba(125, 167, 255, 0.85); letter-spacing: 0.3em; }
+.belt-label { color: rgba(255, 212, 121, 0.85); letter-spacing: 0.3em; }
 .alpha-label {
   color: rgba(125, 211, 252, 0.92);
   font-family: var(--mono);

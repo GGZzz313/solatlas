@@ -505,6 +505,11 @@ const viewSky = new Float32Array(16);   // rotation-only view for the star dome
 const vpSky = new Float32Array(16);
 const FOV = 55 * DEG;
 const MAX_DIST = 150000;                // au — past the Oort cloud's outer edge
+// On the way out, once you cross into interstellar scale, settle the camera into
+// a composed view so the far signposts (interstellar space, Alpha Centauri) are
+// already framed — no dragging around to find them.
+const FAR_ORIENT_DIST = 55000;          // au — where those labels start to fade in
+const FAR_YAW = 2.45, FAR_PITCH = 0.55; // frames interstellar space + Alpha Centauri
 
 let dpr = 1, cssW = 0, cssH = 0;
 function resize() {
@@ -1131,10 +1136,12 @@ let selMarkerEl = null;
 // "→ Alpha Centauri" sits along the star's TRUE J2000 direction (RA 14h39.6m,
 // Dec −60.8° rotated into the ecliptic frame) — you have to face it to see it.
 const REGION_LABELS = [
+  { text: "Asteroid Belt", cls: "belt-label", pos: [1.95, -1.95, 0.1],
+    in0: 3.5, in1: 6, out0: 45, out1: 110, show: () => groups[GI.MBA].visible, onClick: () => selectRegion("asteroid") },
   { text: "Kuiper Belt", cls: "kuiper-label", pos: [31, -31, 2],
-    in0: 15, in1: 28, out0: 250, out1: 800, show: () => groups[GI.TNO].visible },
+    in0: 15, in1: 28, out0: 250, out1: 800, show: () => groups[GI.TNO].visible, onClick: () => selectRegion("kuiper") },
   { text: "Oort cloud · inferred", cls: "oort-label", pos: [26000, 8000, 9000],
-    in0: 1500, in1: 4000, show: () => OORT.visible, onClick: () => selectOort() },
+    in0: 1500, in1: 4000, show: () => OORT.visible, onClick: () => selectRegion("oort") },
   { text: "interstellar space", cls: "oort-label", pos: [110000, 60000, 30000],
     in0: 55000, in1: 105000, show: () => true },
   { text: "→ Alpha Centauri · 271,000 au", cls: "alpha-label", pos: [-44100, -74800, -79900],
@@ -2067,7 +2074,7 @@ function setRow(rowId, ddId, value) {
 }
 
 // tint the info card to match the selected body's legend colour
-const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff", OORT_CSS = "#9aa7c4";
+const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff";
 function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
 
 function selectObject(gi, k) {
@@ -2238,8 +2245,45 @@ function selectSun() {
   $("panel-info").hidden = false;
 }
 
-// The Oort cloud — a region, not a body. Honest framing: inferred, never seen.
-function selectOort() {
+/* Regions — belts & clouds. Not bodies, so they draw no orbit: clicking one and
+   seeing no orbit ring (every other target shows one) is itself the point —
+   these are populations/shells, not a single object on a path. Each is framed
+   by how well we actually know it: belts are directly observed, the Oort cloud
+   is inferred. */
+const REGIONS = {
+  asteroid: {
+    name: "Asteroid Belt", cls: "Observed · rock & metal between Mars and Jupiter", accent: "#ffd479",
+    badge: `<span class="badge" style="color:#ffd479;background:rgba(255,212,121,0.12)">● the system's densest population</span>`,
+    desc: "The solar system's densest band of rock and metal — millions of bodies orbiting between Mars and Jupiter, roughly 2.1 to 3.3 au out, left over from a planet that Jupiter's gravity never let form. They run from the dwarf planet Ceres down to dust, yet their combined mass is only a few percent of the Moon's. It's a population, not a single object — every member rides its own orbit, which is why selecting it traces none.",
+    facts: [["inner edge", "≈ 2.1 au"], ["outer edge", "≈ 3.3 au"], ["largest", "Ceres · 940 km"], ["total mass", "~3% of the Moon"]],
+    src: "directly observed · over a million catalogued; this map plots the brightest tens of thousands",
+    preview: { name: "Belt asteroid", kind: "a", spec: "S", palette: [150, 128, 98], diam: 120, albedo: 0.12, rot: NaN, img: null },
+    cap: "representation · a stony main-belt asteroid (scaled to size & class)",
+  },
+  kuiper: {
+    name: "Kuiper Belt", cls: "Observed · icy worlds beyond Neptune", accent: "#7da7ff",
+    badge: `<span class="badge" style="color:#7da7ff;background:rgba(125,167,255,0.12)">● home of Pluto &amp; the dwarf planets</span>`,
+    desc: "A broad ring of icy worlds beyond Neptune, from about 30 to 50 au — the source of the short-period comets and home to Pluto and most of the dwarf planets. Its bodies are ancient ice and rock, often reddened by irradiated organics (tholins). Thousands are now catalogued and one, Arrokoth, has been seen up close — unlike the Oort cloud, this belt is directly observed. It too is a population: countless separate orbits, not one path, so clicking it traces no single ring.",
+    facts: [["inner edge", "≈ 30 au"], ["outer edge", "≈ 50 au"], ["largest", "Pluto · 2,377 km"], ["known members", "~3,000+"]],
+    src: "directly observed · New Horizons flew through it — Pluto 2015, Arrokoth 2019",
+    preview: { name: "Kuiper body", kind: "c", noComa: true, palette: [150, 116, 104], diam: 80, albedo: 0.1, rot: NaN, img: null },
+    cap: "representation · a reddish icy Kuiper body (scaled to size & class)",
+  },
+  oort: {
+    name: "Oort Cloud", cls: "Inferred · leftover icy planetesimals", accent: "#9aa7c4",
+    badge: `<span class="badge" style="color:#9aa7c4;background:rgba(154,167,196,0.12)">◌ inferred · never directly observed</span>`,
+    desc: "A vast spherical shell of leftover icy planetesimals — the Sun's construction debris, flung to the edge of the system by the young giant planets some 4.6 billion years ago. Each is a few kilometres of frozen volatiles — water, methane, ammonia and carbon-monoxide ice — laced with silicate and organic dust. No Oort-cloud body has ever been directly seen; its existence and extent are inferred from the long-period comets that fall in from these distances. Unlike everything else on this map it has no orbit to trace — it's a diffuse shell, not a body on a path.",
+    facts: [["inner edge", "≈ 2,000 au"], ["outer edge", "≈ 100,000 au · 1.5 ly"], ["est. population", "~10¹²–10¹³ bodies"], ["typical size", "1–20 km across"]],
+    src: "inferred from long-period comet orbits · never directly observed",
+    preview: { name: "Oort planetesimal", kind: "c", noComa: true, palette: [120, 140, 165], diam: 8, albedo: 0.06, rot: NaN, img: null },
+    cap: "representation · a dormant icy planetesimal — none has ever been imaged",
+  },
+};
+
+// A region (belt/cloud) — not a body, so it deliberately draws no orbit ring.
+function selectRegion(key) {
+  const R = REGIONS[key];
+  if (!R) return;
   state.selected = null;
   state.selPlanet = null;
   state.selMoon = null;
@@ -2248,17 +2292,17 @@ function selectOort() {
   state.selCraft = null;
   selOrbitCount = 0;
   moonOrbitCount = 0;
-  setCardAccent(OORT_CSS);
-  $("info-name").textContent = "Oort Cloud";
-  $("info-class").textContent = "Inferred · leftover icy planetesimals";
-  $("info-badges").innerHTML =
-    `<span class="badge badge-dwarf">◌ inferred · never directly observed</span>`;
+  setCardAccent(R.accent);
+  $("info-name").textContent = R.name;
+  $("info-class").textContent = R.cls;
+  $("info-badges").innerHTML = R.badge || "";
   $("info-link").hidden = true;
   panelMode("region");
-  $("region-desc").textContent =
-    "A vast spherical shell of leftover icy planetesimals — the Sun's construction debris, flung to the edge of the system by the young giant planets some 4.6 billion years ago. Each is a few kilometres of frozen volatiles — water, methane, ammonia and carbon-monoxide ice — laced with silicate and organic dust. No Oort-cloud body has ever been directly seen; its existence and extent are inferred from the long-period comets that fall in from these distances.";
-  renderPreview({ name: "Oort planetesimal", kind: "c", noComa: true, spec: "", dwarf: false, diam: 8, albedo: 0.06, rot: NaN, img: null });
-  $("preview-cap").textContent = "representation · a dormant icy planetesimal — none has ever been imaged";
+  $("region-desc").textContent = R.desc;
+  $("region-grid").innerHTML = R.facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+  $("region-src").textContent = R.src;
+  renderPreview(R.preview);
+  $("preview-cap").textContent = R.cap;
   $("panel-info").hidden = false;
 }
 
@@ -2447,6 +2491,7 @@ function mulberry32(a) {
 const _rgb = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const _cl = (c) => c.map((v) => (v < 0 ? 0 : v > 255 ? 255 : v));
 function bodyPalette(m) {
+  if (m.palette) return m.palette;                            // explicit override (region previews)
   const s = (m.spec || "").toUpperCase();
   if (m.kind === "c") return [120, 140, 165];                 // icy comet nucleus
   if (/^[CBFGPDT]/.test(s)) return [86, 74, 64];              // carbonaceous / primitive — dark
@@ -2758,7 +2803,11 @@ canvas.addEventListener("pointermove", (ev) => {
   } else if (pointers.size === 2) {
     const [p1, p2] = [...pointers.values()];
     const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-    if (pinchD0 > 0 && d > 0) state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), minDist(), MAX_DIST);
+    if (pinchD0 > 0 && d > 0) {
+      const prev = state.cam.tDist;
+      state.cam.tDist = clamp(distAtPinch * (pinchD0 / d), minDist(), MAX_DIST);
+      farOrientIfCrossed(prev);
+    }
     dismissHint();
   }
 });
@@ -2777,7 +2826,9 @@ canvas.addEventListener("wheel", (ev) => {
   state.camEaseRate = 9;
   // bigger strides once past the planets, or the Oort journey takes 80 notches
   const accel = state.cam.tDist > 120 ? 2.2 : 1;
+  const prev = state.cam.tDist;
   state.cam.tDist = clamp(state.cam.tDist * Math.exp(ev.deltaY * 0.0011 * accel), minDist(), MAX_DIST);
+  farOrientIfCrossed(prev);
   dismissHint();
 }, { passive: false });
 function resetToSun() {
@@ -2789,6 +2840,14 @@ function resetToSun() {
 canvas.addEventListener("dblclick", resetToSun);
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 function minDist() { return state.focus ? 5e-5 : 0.18; }
+// snap to the composed interstellar view the first time you cross out past the
+// Oort cloud; a later drag overrides it, and zooming back in re-arms the snap
+function farOrientIfCrossed(prev) {
+  if (prev <= FAR_ORIENT_DIST && state.cam.tDist > FAR_ORIENT_DIST) {
+    state.cam.tYaw = FAR_YAW;
+    state.cam.tPitch = FAR_PITCH;
+  }
+}
 
 /* ============================================================
    11. UI wiring — time machine, panels, view
