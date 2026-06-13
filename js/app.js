@@ -870,7 +870,7 @@ function render(now) {
   eye[2] = c.target[2] + c.dist * Math.sin(c.pitch);
   // near plane follows zoom so a focused moon system isn't clipped away;
   // far plane covers the Oort shell and long-period comet orbits
-  mat4Perspective(proj, FOV, canvas.width / canvas.height, Math.min(0.01, c.dist * 0.2), 260000);
+  mat4Perspective(proj, FOV, canvas.width / canvas.height, Math.min(0.01, c.dist * 0.2), 300000);
   mat4LookAt(view, eye, c.target, [0, 0, 1]);
   mat4Mul(vp, proj, view);
   // star dome: same orientation, no translation — a sky at any zoom level
@@ -1044,7 +1044,19 @@ function project(x, y, z) {
 
 /* ---- HTML overlays: sun halo, planet labels, selection marker ---- */
 let selMarkerEl = null;
-let oortLabelEl = null;
+// Region labels: anchored at world-space points, fading with camera distance.
+// "→ Alpha Centauri" sits along the star's TRUE J2000 direction (RA 14h39.6m,
+// Dec −60.8° rotated into the ecliptic frame) — you have to face it to see it.
+const REGION_LABELS = [
+  { text: "Kuiper Belt", cls: "kuiper-label", pos: [31, -31, 2],
+    in0: 15, in1: 28, out0: 250, out1: 800, show: () => groups[GI.TNO].visible },
+  { text: "Oort cloud · inferred", cls: "oort-label", pos: [26000, 8000, 9000],
+    in0: 1500, in1: 4000, show: () => OORT.visible },
+  { text: "interstellar space", cls: "oort-label", pos: [110000, 60000, 30000],
+    in0: 55000, in1: 105000, show: () => true },
+  { text: "→ Alpha Centauri · 271,000 au", cls: "alpha-label", pos: [-44100, -74800, -79900],
+    in0: 55000, in1: 105000, show: () => true },
+];
 const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
 const moonLabelList = []; // { k, name, el } for major moons (radius ≥ 200 km)
 function buildDwarfList() {
@@ -1131,21 +1143,24 @@ function updateOverlays(pixScale) {
     ml.el.style.opacity = show ? "0.85" : "0";
     if (show) ml.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
   }
-  // Oort cloud label — fades in once the shell starts to resolve
-  if (!oortLabelEl) {
-    oortLabelEl = document.createElement("div");
-    oortLabelEl.className = "pl-label oort-label";
-    oortLabelEl.textContent = "Oort cloud · inferred";
-    labelsEl.appendChild(oortLabelEl);
+  // region labels (Kuiper Belt, Oort cloud, interstellar space, Alpha Cen)
+  for (const rl of REGION_LABELS) {
+    if (!rl.el) {
+      rl.el = document.createElement("div");
+      rl.el.className = "pl-label " + rl.cls;
+      rl.el.textContent = rl.text;
+      labelsEl.appendChild(rl.el);
+    }
+    let fade = rl.show() ? clamp((state.cam.dist - rl.in0) / (rl.in1 - rl.in0), 0, 1) : 0;
+    if (fade > 0 && rl.out0) fade *= clamp(1 - (state.cam.dist - rl.out0) / (rl.out1 - rl.out0), 0, 1);
+    if (fade > 0.01) {
+      const p = project(rl.pos[0], rl.pos[1], rl.pos[2]);
+      if (p && p[0] > 40 && p[0] < cssW - 40 && p[1] > 30 && p[1] < cssH - 30) {
+        rl.el.style.opacity = (0.8 * fade).toFixed(2);
+        rl.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+      } else rl.el.style.opacity = "0";
+    } else rl.el.style.opacity = "0";
   }
-  const oortLblFade = OORT.visible ? clamp((state.cam.dist - 1500) / 2500, 0, 1) : 0;
-  if (oortLblFade > 0) {
-    const p = project(26000, 8000, 9000);   // a point inside the shell
-    if (p && p[0] > 40 && p[0] < cssW - 40 && p[1] > 30 && p[1] < cssH - 30) {
-      oortLabelEl.style.opacity = (0.8 * oortLblFade).toFixed(2);
-      oortLabelEl.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
-    } else oortLabelEl.style.opacity = "0";
-  } else oortLabelEl.style.opacity = "0";
 
   // selection marker (asteroid, planet, or moon) + live distance readout
   let selPos = null, selName = "";
@@ -1192,6 +1207,7 @@ const zbFrac = (d) => (Math.log10(d) - ZB_LO) / (ZB_HI - ZB_LO);
 (function initZoomBar() {
   $("zb-earth").style.left = (zbFrac(1) * 100).toFixed(1) + "%";
   $("zb-neptune").style.left = (zbFrac(30.07) * 100).toFixed(1) + "%";
+  $("zb-kuiper").style.left = (zbFrac(44) * 100).toFixed(1) + "%";
   const l = zbFrac(2000) * 100, r = zbFrac(100000) * 100;
   $("zb-oort").style.left = l.toFixed(1) + "%";
   $("zb-oort").style.width = (r - l).toFixed(1) + "%";
@@ -1733,7 +1749,7 @@ function renderLegend() {
   });
 
   ul.appendChild(legendRow("Oort cloud", "inferred", "#9aa7c4",
-    "A statistical representation, not data — no Oort-cloud object has ever been directly observed. Its existence and extent (≈2,000–100,000 au) are inferred from the orbits of long-period comets. Zoom all the way out to make the journey.",
+    "A statistical representation, not data — no Oort-cloud object has ever been directly observed. Its existence and extent (≈2,000–100,000 au) are inferred from the orbits of long-period comets. Zoom all the way out to make the journey — and once you're past the shell, look around: there's a signpost to our nearest neighbouring star.",
     (li) => { OORT.visible = !OORT.visible; li.classList.toggle("off", !OORT.visible); }, OORT.visible));
 
   // overlay toggles (not populations)
@@ -2281,7 +2297,7 @@ let dragDist = 0, pinchD0 = 0, distAtPinch = 0;
 function dismissHint() { $("hint").classList.add("gone"); }
 
 canvas.addEventListener("pointerdown", (ev) => {
-  canvas.setPointerCapture(ev.pointerId);
+  try { canvas.setPointerCapture(ev.pointerId); } catch (_) { /* capture is best-effort */ }
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   dragDist = 0;
   state.camEaseRate = 9;            // grabbing the camera cancels the launch dolly
