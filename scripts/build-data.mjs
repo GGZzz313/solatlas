@@ -14,10 +14,10 @@ const API = "https://ssd-api.jpl.nasa.gov";
 
 // Orbital elements + physical params + hazard flags for the info panel.
 const AST_FIELDS =
-  "pdes,name,a,e,i,om,w,ma,epoch,H,class,diameter,albedo,rot_per,spec_B,spec_T,pha,moid";
+  "pdes,name,a,e,i,om,w,ma,epoch,H,class,diameter,albedo,rot_per,spec_B,spec_T,pha,moid,condition_code,data_arc,n_obs_used,last_obs";
 // Comets are parameterised by perihelion distance q and time of
 // perihelion passage tp rather than a / mean-anomaly.
-const COM_FIELDS = "pdes,name,e,i,om,w,q,tp,epoch,diameter,rot_per";
+const COM_FIELDS = "pdes,name,e,i,om,w,q,tp,epoch,diameter,rot_per,condition_code,data_arc,n_obs_used,last_obs";
 
 async function getJSON(url, tries = 3) {
   for (let attempt = 1; ; attempt++) {

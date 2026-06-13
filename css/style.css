@@ -513,6 +513,8 @@ html, body {
 .sat-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
 .sat-src { margin-top: 10px; font-size: 10px; color: var(--ink-dim); font-family: var(--mono); }
 .craft-note { font-size: 12.5px; line-height: 1.5; color: var(--ink); margin-bottom: 12px; }
+.info-caveat { font-size: 11px; color: #ffb86b; opacity: 0.9; margin: 10px 0 0; line-height: 1.4; }
+#info-caveat[hidden] { display: none; }
 .badge-sat { color: #bfe3ff; background: rgba(125, 190, 255, 0.14); }
 .badge-craft { color: #8ef0b0; background: rgba(142, 240, 176, 0.14); }
 

@@ -1462,6 +1462,7 @@ function makeMeta(r, kind) {
     H: r.H, diam: r.diam, albedo: r.albedo, rot: r.rot,
     spec: r.spec || "", pha: !!r.pha, moid: r.moid,
     q: r.a * (1 - r.e), kind: kind || "a", dwarf: null, sentry: null, img: null,
+    ucode: r.ucode != null ? r.ucode : null, arc: r.arc, lastObs: r.lastObs || null,
   };
   const dw = DWARFS[r.pdes];
   if (dw) {
@@ -1503,6 +1504,7 @@ function ingest(resp) {
       albedo: num(row[ix.albedo]), rot: num(row[ix.rot_per]),
       spec: (row[ix.spec_T] || row[ix.spec_B] || "").trim(),
       pha: (row[ix.pha] || "") === "Y", moid: num(row[ix.moid]),
+      ucode: row[ix.condition_code], arc: num(row[ix.data_arc]), lastObs: row[ix.last_obs] || null,
     });
   }
 
@@ -1577,6 +1579,7 @@ function ingestComets(resp) {
       a, e, inc, om, w, tp,
       diam: isFinite(diam) ? diam : NaN, rot: num(row[ix.rot_per]),
       albedo: NaN, spec: "", pha: false, moid: NaN,
+      ucode: row[ix.condition_code], arc: num(row[ix.data_arc]), lastObs: row[ix.last_obs] || null,
     });
   }
 
@@ -1644,6 +1647,7 @@ function ingestInterstellar(resp) {
       a: q / (1 - e), e, inc, om, w, tp,
       diam: isFinite(diam) ? diam : NaN, rot: num(row[ix.rot_per]),
       albedo: NaN, spec: "", pha: false, moid: NaN,
+      ucode: row[ix.condition_code], arc: num(row[ix.data_arc]), lastObs: row[ix.last_obs] || null,
     });
   }
   if (!rows.length) return 0;
@@ -2214,6 +2218,19 @@ function selectObject(gi, k) {
   setRow("info-row-rot", "info-rot", isFinite(m.rot) && m.rot > 0 ? formatHours(m.rot) : null);
   setRow("info-row-spec", "info-spec", m.spec || null);
   setRow("info-row-moid", "info-moid", isFinite(m.moid) ? m.moid.toFixed(3) + " au" : null);
+  // honesty: how stale / well-constrained the orbit solution is
+  setRow("info-row-lastobs", "info-lastobs", m.lastObs);
+  setRow("info-row-arc", "info-arc", isFinite(m.arc) ? formatArc(m.arc) : null);
+  const U = m.ucode == null ? NaN : parseInt(m.ucode, 10);
+  const shortArc = (isFinite(U) && U >= 5) || (isFinite(m.arc) && m.arc < 30);
+  const cav = $("info-caveat");
+  if (shortArc) {
+    const why = isFinite(m.arc) && m.arc < 30
+      ? (m.arc < 1.5 ? "single-night arc" : Math.round(m.arc) + "-day arc")
+      : "uncertainty code U" + U;
+    cav.textContent = "Short observation arc (" + why + ") — this orbit is poorly constrained; the plotted path is approximate.";
+    cav.hidden = false;
+  } else cav.hidden = true;
 
   const link = $("info-link");
   link.href = "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=" + encodeURIComponent(m.name);
@@ -2284,6 +2301,8 @@ function selectPlanet(i) {
   setRow("info-row-rot", "info-rot", formatRotation(facts.rot));
   setRow("info-row-spec", "info-spec", null);
   setRow("info-row-moid", "info-moid", null);
+  setRow("info-row-lastobs", "info-lastobs", null);
+  setRow("info-row-arc", "info-arc", null);
   $("info-link").hidden = true;
   showPhotoPreview(PLANET_IMG[i][0], PLANET_IMG[i][1]);
   $("panel-info").hidden = false;
@@ -2315,6 +2334,8 @@ function selectSun() {
   setRow("info-row-rot", "info-rot", "25.05 d (equator)");
   setRow("info-row-spec", "info-spec", "G2V");
   setRow("info-row-moid", "info-moid", null);
+  setRow("info-row-lastobs", "info-lastobs", null);
+  setRow("info-row-arc", "info-arc", null);
   $("info-link").hidden = true;
   showPhotoPreview("sun.jpg", "NASA/SDO · extreme UV");
   $("panel-info").hidden = false;
@@ -2411,6 +2432,7 @@ function panelMode(mode) {
   $("info-sat").hidden = mode !== "sat";
   $("info-craft").hidden = mode !== "craft";
   $("info-region").hidden = mode !== "region";
+  $("info-caveat").hidden = true;   // only selectObject re-shows it (short-arc orbits)
 }
 const satLayout = (on) => panelMode(on ? "sat" : "body");
 
@@ -2496,6 +2518,8 @@ function selectMoon(k) {
   setRow("info-row-rot", "info-rot", null);
   setRow("info-row-spec", "info-spec", null);
   setRow("info-row-moid", "info-moid", null);
+  setRow("info-row-lastobs", "info-lastobs", null);
+  setRow("info-row-arc", "info-arc", null);
   $("info-link").hidden = true;
   if (m.img) showPhotoPreview(m.img[0], m.img[1]);
   else renderPreview({ name: m.name, kind: "a", spec: "", dwarf: true, diam: m.radius ? m.radius * 2 : NaN, albedo: NaN, rot: NaN, img: null });
@@ -2529,6 +2553,12 @@ function clearSelection() {
   moonOrbitCount = 0;
   stopPreview();
   $("panel-info").hidden = true;
+}
+function formatArc(d) {
+  if (d < 1.5) return "single night";
+  if (d < 90) return Math.round(d) + " days";
+  const yr = d / 365.25;
+  return yr < 10 ? yr.toFixed(1) + " yr" : Math.round(yr) + " yr";
 }
 function formatPeriod(yr) {
   const d = yr * 365.25;
