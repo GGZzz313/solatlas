@@ -1,4 +1,4 @@
-# ☄️ Sol Atlas
+# 🪐 Sol Atlas
 
 **The solar system, live and to scale — rendered in your browser.**
 
@@ -25,8 +25,9 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
   (≈2,000–100,000 au; no Oort object has ever been observed — the shell is drawn where
   long-period comet orbits say it must be). A live scale bar keeps the distances honest,
   and the 379 near-parabolic comets are plotted as the real evidence pointing at it.
-- **Comets** — ~1,300 periodic and Halley-type comets, converted from their perihelion
-  elements (`q`, `tp`) and propagated on the same Keplerian engine.
+- **Comets** — ~4,000 periodic and Halley-type comets, converted from their perihelion
+  elements (`q`, `tp`) and propagated on the same Keplerian engine. As one nears the Sun
+  it grows a short dust tail pointing **anti-sunward**, lengthening toward perihelion.
 - **Dwarf planets** — Ceres, Pluto, Eris, Haumea, Makemake and friends carry always-on
   labels so you can find them in the crowd.
 - **Interstellar visitors** — 1I/ʻOumuamua, 2I/Borisov and 3I/ATLAS, propagated on a
@@ -38,6 +39,10 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
 - **Planets are first-class too** — click or search any planet for its live orbital
   elements, diameter, rotation, moon count and a real photo; double-click space to
   return to the Sun.
+- **Lit worlds & Saturn's rings** — fly close to a planet and the point sprite resolves
+  into a real, **Lambert-lit textured sphere** with a visible day/night terminator (lit
+  from the Sun at the origin), at the planet's true axial tilt — and Saturn into its full
+  ring system, Cassini Division and all.
 - **In-flight spacecraft** — humanity's deep-space probes (Voyager 1 & 2, Pioneer 10 &
   11, New Horizons, Parker Solar Probe, Lucy, Psyche) on their real flight paths from
   JPL Horizons. The Voyagers are out past 165 au, coasting toward the interstellar-space
@@ -62,20 +67,38 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
   class, MOID) and a **preview** — a real spacecraft photo for the ~21 bodies that have
   been visited, or an honest procedural representation (scaled to the object's true size,
   albedo and spectral class) for everything else.
+- **How well do we *know* it?** — the card also shows when each small body was **last
+  observed** and its **observation arc**, and flags poorly-constrained orbits (short arc
+  or a high MPC uncertainty code) with a caution line, e.g. *1979 XB — observed for four
+  days in 1979 and never recovered; the plotted path is approximate.*
 - **Sentry watchlist** — JPL CNEOS's impact-risk table, with Torino/Palermo scale and
   odds; hazardous objects are flagged right in the object card.
-- **Live close-approach feed** — upcoming Earth flybys within 10 lunar distances over
-  the next 60 days, from JPL CNEOS.
+- **An "Upcoming" feed** — what's about to happen in the near-Earth sky, all computed
+  in-browser: the next Earth close approaches (JPL CNEOS), comet perihelia, planetary
+  oppositions and the annual meteor-shower peaks. Click any event to jump the clock to
+  that moment and frame the object.
+- **True scale, honestly** — a toggle that renders every body at its *real* angular size
+  instead of an exaggerated dot. The Sun and planets shrink to faint points, the asteroid
+  belt and moons vanish entirely — the genuine emptiness of space. (Everything stays
+  searchable and clickable.)
+- **Take the tour** — one button auto-flies a cinematic, continuous-zoom journey through
+  the highlights (Sun → belt → Jupiter → Saturn's rings → Pluto → Voyager 1 → the Oort
+  cloud → Alpha Centauri), narrating each stop; any interaction or `Esc` hands control
+  back. Plus keyboard shortcuts: `space` play/pause, `←/→` speed, `n` now.
+- **Shareable views** — every view encodes itself into the URL (selected object, camera,
+  date, layers). Hit **Share** to copy a link that drops someone onto the exact same
+  scene — *"Voyager 1 at the heliopause"* — no backend involved.
 - **All eight planets** with date-accurate positions (JPL approximate ephemeris,
   valid 1800–2050) and their orbits.
-- **Desktop & mobile** — drag to orbit, scroll or pinch to zoom, glassmorphic panels
-  that collapse into floating buttons on small screens.
+- **Desktop & mobile** — drag to orbit, scroll or pinch to zoom, **tap or drag the zoom
+  bar** (handy without a scroll wheel), glassmorphic panels that collapse into floating
+  buttons on small screens. Keyboard-operable and focus-ringed throughout.
 
 ## 🛰 Data sources (free, public, keyless)
 
 | API | Used for |
 | --- | --- |
-| [JPL Small-Body Database Query API](https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html) | Orbital elements, magnitudes, diameters, albedo, rotation, spectral class and orbit classes for ~50k asteroids **and comets** (NEOs, main belt, trojans, centaurs, TNOs, comets) |
+| [JPL Small-Body Database Query API](https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html) | Orbital elements, magnitudes, diameters, albedo, rotation, spectral class, orbit classes — plus **observation arc, last-observed date and orbit-condition code** (the orbit-quality signals) — for ~50k asteroids **and comets** (NEOs, main belt, trojans, centaurs, TNOs, comets) |
 | [JPL CNEOS Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) | Earth-impact risk table (Torino/Palermo scale, probabilities) |
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
 | [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Orbital elements for all ~457 planetary moons, and flight-path vectors for in-flight spacecraft |
@@ -133,8 +156,12 @@ node test/orbits.test.js
    the same equation around their parent planet, then ride its heliocentric position.
    On slower devices the population is updated in rotating slices.
 3. **Render** — hand-rolled WebGL1: additive-blended point sprites with soft gaussian
-   falloff for asteroids/stars/planets, line loops for orbits, a CSS bloom tracking the
-   Sun's projected position, and a twinkling 4,700-star backdrop with a milky-way band.
+   falloff for asteroids/stars/planets, line loops for orbits, anti-sunward comet tails,
+   a CSS bloom tracking the Sun's projected position, and a twinkling 4,700-star backdrop
+   with a milky-way band. The focused planet upgrades to a depth-tested, Lambert-lit
+   textured sphere (plus a procedural ring disc) — briefly switching the pipeline out of
+   its additive/depth-off default and restoring it afterward. Satellites are propagated
+   live in real time (decoupled from the time machine) and re-anchored to Earth each frame.
 
 The app is three files — `index.html`, `css/style.css`, `js/app.js` — plus the data
 builders in `scripts/` (Node-only), `img/bodies/` (the spacecraft photos), and one
