@@ -1134,7 +1134,7 @@ const REGION_LABELS = [
   { text: "Kuiper Belt", cls: "kuiper-label", pos: [31, -31, 2],
     in0: 15, in1: 28, out0: 250, out1: 800, show: () => groups[GI.TNO].visible },
   { text: "Oort cloud · inferred", cls: "oort-label", pos: [26000, 8000, 9000],
-    in0: 1500, in1: 4000, show: () => OORT.visible },
+    in0: 1500, in1: 4000, show: () => OORT.visible, onClick: () => selectOort() },
   { text: "interstellar space", cls: "oort-label", pos: [110000, 60000, 30000],
     in0: 55000, in1: 105000, show: () => true },
   { text: "→ Alpha Centauri · 271,000 au", cls: "alpha-label", pos: [-44100, -74800, -79900],
@@ -1258,19 +1258,25 @@ function updateOverlays(pixScale) {
   for (const rl of REGION_LABELS) {
     if (!rl.el) {
       rl.el = document.createElement("div");
-      rl.el.className = "pl-label " + rl.cls;
+      rl.el.className = "pl-label " + rl.cls + (rl.onClick ? " region-clickable" : "");
       rl.el.textContent = rl.text;
+      if (rl.onClick) rl.el.addEventListener("click", rl.onClick);
       labelsEl.appendChild(rl.el);
     }
     let fade = rl.show() ? clamp((state.cam.dist - rl.in0) / (rl.in1 - rl.in0), 0, 1) : 0;
     if (fade > 0 && rl.out0) fade *= clamp(1 - (state.cam.dist - rl.out0) / (rl.out1 - rl.out0), 0, 1);
+    let shown = false;
     if (fade > 0.01) {
       const p = project(rl.pos[0], rl.pos[1], rl.pos[2]);
       if (p && p[0] > 40 && p[0] < cssW - 40 && p[1] > 30 && p[1] < cssH - 30) {
         rl.el.style.opacity = (0.8 * fade).toFixed(2);
         rl.el.style.transform = `translate(${p[0]}px, ${p[1]}px) translate(-50%,-150%)`;
+        shown = true;
       } else rl.el.style.opacity = "0";
     } else rl.el.style.opacity = "0";
+    // clickable region labels only intercept clicks while actually visible,
+    // so an opacity-0 label never swallows a click in empty space
+    if (rl.onClick) rl.el.style.pointerEvents = shown ? "auto" : "none";
   }
 
   // selection marker (asteroid, planet, or moon) + live distance readout
@@ -2061,7 +2067,7 @@ function setRow(rowId, ddId, value) {
 }
 
 // tint the info card to match the selected body's legend colour
-const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff";
+const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff", OORT_CSS = "#9aa7c4";
 function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
 
 function selectObject(gi, k) {
@@ -2232,14 +2238,39 @@ function selectSun() {
   $("panel-info").hidden = false;
 }
 
+// The Oort cloud — a region, not a body. Honest framing: inferred, never seen.
+function selectOort() {
+  state.selected = null;
+  state.selPlanet = null;
+  state.selMoon = null;
+  state.selSun = false;
+  state.selSat = null;
+  state.selCraft = null;
+  selOrbitCount = 0;
+  moonOrbitCount = 0;
+  setCardAccent(OORT_CSS);
+  $("info-name").textContent = "Oort Cloud";
+  $("info-class").textContent = "Inferred · leftover icy planetesimals";
+  $("info-badges").innerHTML =
+    `<span class="badge badge-dwarf">◌ inferred · never directly observed</span>`;
+  $("info-link").hidden = true;
+  panelMode("region");
+  $("region-desc").textContent =
+    "A vast spherical shell of leftover icy planetesimals — the Sun's construction debris, flung to the edge of the system by the young giant planets some 4.6 billion years ago. Each is a few kilometres of frozen volatiles — water, methane, ammonia and carbon-monoxide ice — laced with silicate and organic dust. No Oort-cloud body has ever been directly seen; its existence and extent are inferred from the long-period comets that fall in from these distances.";
+  renderPreview({ name: "Oort planetesimal", kind: "c", noComa: true, spec: "", dwarf: false, diam: 8, albedo: 0.06, rot: NaN, img: null });
+  $("preview-cap").textContent = "representation · a dormant icy planetesimal — none has ever been imaged";
+  $("panel-info").hidden = false;
+}
+
 // satellites use a dedicated panel layout; toggle it vs the body grid/preview
 // swap the card body between the default grid+preview, the satellite block,
-// and the spacecraft block. mode: "body" | "sat" | "craft"
+// the spacecraft block, and the region block. mode: "body" | "sat" | "craft" | "region"
 function panelMode(mode) {
   $("info-grid").hidden = mode !== "body";
-  $("info-preview").hidden = mode !== "body";
+  $("info-preview").hidden = !(mode === "body" || mode === "region");
   $("info-sat").hidden = mode !== "sat";
   $("info-craft").hidden = mode !== "craft";
+  $("info-region").hidden = mode !== "region";
 }
 const satLayout = (on) => panelMode(on ? "sat" : "body");
 
@@ -2471,7 +2502,7 @@ function drawProcedural(cv, m) {
     if (t0 == null) t0 = ts;
     const phase = ((ts - t0) / 1000) * spin;
     ctx.clearRect(0, 0, W, H);
-    if (isComet) drawComa(ctx, cx, cy, R, phase, albk);
+    if (isComet && !m.noComa) drawComa(ctx, cx, cy, R, phase, albk);
 
     ctx.save();
     tracePath();

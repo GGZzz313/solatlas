@@ -507,7 +507,7 @@ html, body {
 #panel-info { max-height: min(74vh, 640px); overflow-y: auto; scrollbar-width: thin; }
 
 /* ---- satellite info ---- */
-#info-sat[hidden], #info-craft[hidden] { display: none; }
+#info-sat[hidden], #info-craft[hidden], #info-region[hidden] { display: none; }
 .sat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .sat-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
 .sat-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
@@ -569,6 +569,8 @@ html, body {
 /* dwarf-planet & moon floating labels */
 .dwarf-label { color: rgba(196, 181, 253, 0.92); }
 .oort-label { color: rgba(154, 167, 196, 0.9); letter-spacing: 0.3em; }
+.region-clickable { cursor: pointer; transition: color 0.15s, text-shadow 0.15s; }
+.region-clickable:hover { color: #d3dcef; text-shadow: 0 0 12px rgba(154, 167, 196, 0.65); }
 .kuiper-label { color: rgba(125, 167, 255, 0.85); letter-spacing: 0.3em; }
 .alpha-label {
   color: rgba(125, 211, 252, 0.92);
