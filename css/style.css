@@ -716,6 +716,7 @@ html, body {
 }
 .stat-num.dim { color: #9fb0d2; text-shadow: none; }
 .stat-num.man { color: #bfe3ff; text-shadow: 0 0 14px rgba(125, 190, 255, 0.6); }
+.stat-num.debris { color: #ff7849; text-shadow: 0 0 14px rgba(255, 120, 73, 0.5); }
 .stat-label { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #8d99b6; margin-top: 4px; }
 
 .search-wrap { margin-left: auto; position: relative; width: min(300px, 38vw); }

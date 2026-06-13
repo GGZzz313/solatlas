@@ -367,10 +367,12 @@ const sats = {
 const craft = [];                // { name, info, jd, verts, n, pos, inRange, trajBuf, posBuf, sizeBuf, labelEl }
 const CRAFT_CSS = "#8ef0b0";     // spacecraft population colour (green)
 let craftVisible = false;        // off by default, like the PHA highlight
-let satCountKnown = 0;           // satellites (from the tiny count file or full load)
-// header "man-made" tally = satellites + in-flight spacecraft
+let satCountKnown = 0;           // active payloads (from the tiny count file or full load)
+let debrisCountKnown = 0;        // tracked debris
+// header splits man-made into "functional" (payloads + in-flight spacecraft) and "debris"
 function updateManMade() {
   $("stat-craft").textContent = (satCountKnown + craft.length).toLocaleString("en-US");
+  $("stat-debris").textContent = debrisCountKnown.toLocaleString("en-US");
 }
 
 /* ============================================================
@@ -1704,7 +1706,8 @@ function loadSatellites() {
     sats.loaded = true;
     sats.loading = false;
     sats.fullUpdate = true;
-    satCountKnown = sats.count;
+    satCountKnown = sats.payloadCount;
+    debrisCountKnown = sats.count - sats.payloadCount;
     updateManMade();
     renderLegend();
     // if we're already at Earth, surface the count badge now that data's in
@@ -2957,7 +2960,12 @@ loadAsteroids();
 // preload just the satellite COUNT (tiny) so the man-made figure is correct
 // from the first frame, without the 2.5 MB catalogue
 fetchJSON("data/sat-count.json")
-  .then((d) => { if (d && d.count) { satCountKnown = d.count; updateManMade(); } })
+  .then((d) => {
+    if (!d || d.count == null) return;
+    satCountKnown = d.payloads != null ? d.payloads : d.count;   // functional payloads
+    debrisCountKnown = d.debris || 0;
+    updateManMade();
+  })
   .catch(() => {});
 
 })();
