@@ -891,6 +891,49 @@ function ensureTrueSizes() {
   trueSizesBuilt = true;
 }
 
+// Comet tails — the Sun is at the origin, so the anti-sunward direction is just
+// pos/|pos|. Near-perihelion comets (r < TAIL_R0) get an additive streak whose
+// length grows ~1/r; one batched LINES draw covers both comet populations.
+const TAIL_R0 = 3.5, TAIL_LEN = 0.9, TAIL_MAX = 1.4;   // au
+let tailVerts = new Float32Array(0), tailBuf = null;
+function drawCometTails() {
+  let n = 0;
+  for (const gi of [GI.COM, GI.LPC]) {
+    const g = groups[gi]; if (!g.count || !g.visible) continue;
+    for (let k = 0; k < g.count; k++) {
+      const x = g.pos[k * 3], y = g.pos[k * 3 + 1], z = g.pos[k * 3 + 2];
+      const r = Math.hypot(x, y, z);
+      if (r > 0 && r < TAIL_R0) n++;
+    }
+  }
+  if (!n) return;
+  if (tailVerts.length < n * 6) tailVerts = new Float32Array(n * 6);
+  let o = 0;
+  for (const gi of [GI.COM, GI.LPC]) {
+    const g = groups[gi]; if (!g.count || !g.visible) continue;
+    for (let k = 0; k < g.count; k++) {
+      const x = g.pos[k * 3], y = g.pos[k * 3 + 1], z = g.pos[k * 3 + 2];
+      const r = Math.hypot(x, y, z);
+      if (!(r > 0 && r < TAIL_R0)) continue;
+      const inv = 1 / r;
+      let L = TAIL_LEN * (inv - 1 / TAIL_R0); if (L > TAIL_MAX) L = TAIL_MAX;
+      tailVerts[o++] = x; tailVerts[o++] = y; tailVerts[o++] = z;                       // nucleus
+      tailVerts[o++] = x + x * inv * L; tailVerts[o++] = y + y * inv * L; tailVerts[o++] = z + z * inv * L; // tip (anti-sunward)
+    }
+  }
+  gl.useProgram(lnProg);
+  gl.uniformMatrix4fv(LN.uVP, false, vp);
+  gl.enableVertexAttribArray(LN.aPos);
+  if (!tailBuf) tailBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, tailBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, tailVerts.subarray(0, o), gl.DYNAMIC_DRAW);
+  gl.vertexAttribPointer(LN.aPos, 3, gl.FLOAT, false, 0, 0);
+  const c = groups[GI.COM].color;
+  gl.uniform3f(LN.uColor, c[0], c[1], c[2]);
+  gl.uniform1f(LN.uAlpha, 0.4);
+  gl.drawArrays(gl.LINES, 0, o / 3);
+}
+
 function render(now) {
   const dt = Math.min((now - lastFrame) / 1000, 0.25);
   lastFrame = now;
@@ -1167,6 +1210,9 @@ function render(now) {
       gl.drawArrays(gl.POINTS, 0, 1);
     }
   }
+
+  // comet tails (anti-sunward) — drawn last so they layer over everything (additive)
+  if (groups[GI.COM].visible || groups[GI.LPC].visible) drawCometTails();
 
   updateOverlays(pixScale);
   updateHUD();
