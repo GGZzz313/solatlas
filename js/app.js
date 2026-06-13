@@ -3426,6 +3426,7 @@ let dragDist = 0, pinchD0 = 0, distAtPinch = 0;
 function dismissHint() { $("hint").classList.add("gone"); }
 
 canvas.addEventListener("pointerdown", (ev) => {
+  if (tourActive) cancelTour();            // any scene interaction ends the tour
   try { canvas.setPointerCapture(ev.pointerId); } catch (_) { /* capture is best-effort */ }
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   dragDist = 0;
@@ -3522,6 +3523,82 @@ $("speed-chips").addEventListener("click", (ev) => {
   for (const x of $("speed-chips").children) x.classList.toggle("on", x === b);
 });
 syncPlayBtn();
+
+/* ---- guided tour: set camera targets + selection per step; the render-loop
+   easing does the flying. A generation counter makes stale timers no-ops. ---- */
+const TOUR = [
+  { label: "The Sun · 99.86% of the system's mass", dwell: 5500, go() { resetToSun(); selectSun(); } },
+  { label: "The asteroid belt · millions of worlds", dwell: 5500,
+    go() { state.focus = null; retarget(); Object.assign(state.cam, { tYaw: -1.1, tPitch: 0.45, tDist: 8 }); selectRegion("asteroid"); } },
+  { label: "Jupiter · king of the planets", dwell: 6500, go() { selectPlanet(4); } },
+  { label: "Saturn · the rings", dwell: 7000, go() { selectPlanet(5); state.cam.tDist = 0.004; } },
+  { label: "Pluto · the Kuiper frontier", dwell: 6500,
+    go() { if (plutoRef) selectObject(plutoRef[0], plutoRef[1]);
+      else { state.focus = null; retarget(); Object.assign(state.cam, { tYaw: -1.1, tPitch: 0.5, tDist: 42 }); selectRegion("kuiper"); } } },
+  { label: "Voyager 1 · humanity's farthest machine", dwell: 6500,
+    go() { craftVisible = true; renderLegend(); state.focus = null; retarget();
+      Object.assign(state.cam, { tYaw: FAR_YAW, tPitch: 0.5, tDist: 200 }); if (craft[0]) selectCraft(0); } },
+  { label: "The Oort cloud · the long fall outward", dwell: 9500,
+    go() { state.focus = null; retarget(); Object.assign(state.cam, { tYaw: -1.1, tPitch: 0.5, tDist: 3000 }); selectRegion("oort"); } },
+  { label: "Alpha Centauri · our nearest neighbour", dwell: 8000,
+    go() { state.focus = null; retarget(); Object.assign(state.cam, { tYaw: FAR_YAW, tPitch: FAR_PITCH, tDist: 80000 }); selectRegion("alphacen"); } },
+];
+let tourActive = false, tourGen = 0, tourTimer = null, tourIdx = 0;
+const tourHud = $("tour-hud");
+function runStep(gen, i) {
+  if (gen !== tourGen) return;                 // a cancelled/restarted tour
+  if (i >= TOUR.length) { cancelTour(); return; }
+  tourIdx = i; const s = TOUR[i]; s.go();
+  if (tourHud) tourHud.textContent = s.label + "  ·  " + (i + 1) + " / " + TOUR.length + "  ·  tap or Esc to exit";
+  tourTimer = setTimeout(() => runStep(gen, i + 1), s.dwell);
+}
+function startTour() {
+  if (tourActive) return;
+  tourActive = true; tourGen++; tourIdx = 0;
+  if (!state.playing) { state.playing = true; syncPlayBtn(); }
+  if (tourHud) tourHud.hidden = false;
+  $("btn-tour").classList.add("on");
+  runStep(tourGen, 0);
+}
+function cancelTour() {
+  if (!tourActive) return;
+  tourActive = false; tourGen++;
+  clearTimeout(tourTimer); tourTimer = null;
+  if (tourHud) tourHud.hidden = true;
+  $("btn-tour").classList.remove("on");
+}
+$("btn-tour").addEventListener("click", () => { tourActive ? cancelTour() : startTour(); });
+if (tourHud) tourHud.addEventListener("click", (e) => { e.stopPropagation(); clearTimeout(tourTimer); runStep(tourGen, tourIdx + 1); });
+
+/* ---- keyboard shortcuts ---- */
+function cycleSpeed(dir) {
+  const chips = [...$("speed-chips").children];
+  let idx = chips.findIndex((c) => c.classList.contains("on"));
+  idx = clamp((idx < 0 ? 2 : idx) + dir, 0, chips.length - 1);
+  const b = chips[idx];
+  state.dps = +b.dataset.dps;
+  if (!state.playing) { state.playing = true; syncPlayBtn(); }
+  chips.forEach((x) => x.classList.toggle("on", x === b));
+}
+function hasSelection() {
+  return state.selected || state.selPlanet != null || state.selSun || state.selMoon != null ||
+         state.selSat != null || state.selCraft != null || currentRegion;
+}
+window.addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const t = document.activeElement;
+  if (t === searchEl || /^(INPUT|TEXTAREA)$/.test(t.tagName)) return;
+  switch (ev.key) {
+    case "Escape":
+      if (tourActive) { cancelTour(); ev.preventDefault(); }
+      else if (hasSelection()) { clearSelection(); ev.preventDefault(); }
+      return;
+    case " ": ev.preventDefault(); state.playing = !state.playing; syncPlayBtn(); return;
+    case "ArrowRight": case ".": case "]": ev.preventDefault(); cycleSpeed(1); return;
+    case "ArrowLeft": case ",": case "[": ev.preventDefault(); cycleSpeed(-1); return;
+    case "n": case "N": state.simJD = jdNow(); state.needFullUpdate = true; buildPlanetOrbits(); return;
+  }
+});
 
 /* panels: close buttons + mobile FAB toggles */
 document.querySelectorAll(".panel-close").forEach((b) =>

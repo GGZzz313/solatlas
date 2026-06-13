@@ -844,6 +844,43 @@ html, body {
 }
 #btn-share:hover { background: rgba(196, 181, 253, 0.22); }
 #btn-share.copied { color: #8ef0b0; border-color: rgba(142, 240, 176, 0.5); background: rgba(142, 240, 176, 0.14); }
+#btn-tour {
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ffd479;
+  background: rgba(255, 212, 121, 0.1);
+  border: 1px solid rgba(255, 212, 121, 0.35);
+  border-radius: 99px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#btn-tour:hover { background: rgba(255, 212, 121, 0.22); }
+#btn-tour.on { background: rgba(255, 212, 121, 0.28); box-shadow: 0 0 12px rgba(255, 212, 121, 0.4); }
+#tour-hud {
+  position: fixed;
+  z-index: 24;
+  left: 50%;
+  bottom: calc(94px + var(--safe-b));
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border-radius: 99px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  background: rgba(8, 12, 22, 0.74);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 92vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#tour-hud[hidden] { display: none; }
 
 .time-stack { display: flex; flex-direction: column; align-items: center; gap: 9px; margin: 0 auto; }
 .time-controls { display: flex; align-items: center; gap: 10px; }
