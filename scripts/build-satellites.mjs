@@ -45,6 +45,8 @@ async function main() {
   await mkdir("data", { recursive: true });
   const out = { generated: new Date().toISOString(), count: sats.length, sats };
   await writeFile("data/satellites.json", JSON.stringify(out));
+  // tiny companion so the header's man-made count loads without the 2.5 MB file
+  await writeFile("data/sat-count.json", JSON.stringify({ count: sats.length }));
   const mb = (Buffer.byteLength(JSON.stringify(out)) / 1e6).toFixed(2);
   console.log(`Wrote data/satellites.json — ${sats.length} satellites, ${mb} MB`);
 }

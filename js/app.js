@@ -1597,6 +1597,7 @@ function loadSatellites() {
     sats.loaded = true;
     sats.loading = false;
     sats.fullUpdate = true;
+    $("stat-craft").textContent = sats.count.toLocaleString("en-US");
     renderLegend();
     // if we're already at Earth, surface the count badge now that data's in
     if (state.selPlanet === EARTH_IDX && !$("info-badges").querySelector(".badge-sat")) {
@@ -1679,6 +1680,9 @@ async function loadAsteroids() {
     buildDwarfList();
     buildPhaList();
     buildMoons(moonData);
+    // the headline "natural objects" counts the small bodies plus moons,
+    // the eight planets and the Sun (satellites are tallied separately)
+    state.totalLoaded += moons.count + planetState.length + 1;
     renderLegend();
     fill.style.width = "100%";
     const total = +snap.totalKnown;
@@ -2627,5 +2631,11 @@ window.addEventListener("error", (ev) => {
 });
 requestAnimationFrame((t) => { lastFrame = t; requestAnimationFrame(render); });
 loadAsteroids();
+
+// preload just the satellite COUNT (tiny) so the man-made figure is correct
+// from the first frame, without the 2.5 MB catalogue
+fetchJSON("data/sat-count.json")
+  .then((d) => { if (d && d.count) $("stat-craft").textContent = d.count.toLocaleString("en-US"); })
+  .catch(() => {});
 
 })();

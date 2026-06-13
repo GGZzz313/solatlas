@@ -16,6 +16,12 @@
       ]
     },
     {
+      "source": "/data/sat-count.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=600, must-revalidate" }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" }
