@@ -864,6 +864,7 @@ function render(now) {
 
   // time machine
   if (state.playing) state.simJD += state.dir * state.dps * dt;
+  updateBrandOrrery(dt);
 
   // propagate asteroid + planet + moon positions when time moved — BEFORE the
   // camera reads focusPosition(), or a focused planet is aimed at one frame late
@@ -1369,6 +1370,47 @@ const zbFrac = (d) => (Math.log10(d) - ZB_LO) / (ZB_HI - ZB_LO);
 const zoomThumbEl = $("zoom-thumb");
 function updateZoomBar() {
   zoomThumbEl.style.left = (clamp(zbFrac(state.cam.dist), 0, 1) * 100).toFixed(2) + "%";
+}
+
+/* ---- click / tap / drag the zoom bar to jump to that zoom level (no wheel needed) ---- */
+const zoomBarEl = $("zoom-bar");
+let zbDragging = false;
+function zoomBarTo(clientX) {
+  const r = zoomBarEl.getBoundingClientRect();
+  if (r.width <= 0) return;
+  const f = clamp((clientX - r.left) / r.width, 0, 1);
+  const prev = state.cam.tDist;
+  state.camEaseRate = 9;
+  state.cam.tDist = clamp(Math.pow(10, ZB_LO + f * (ZB_HI - ZB_LO)), minDist(), MAX_DIST);
+  farOrientIfCrossed(prev);
+}
+zoomBarEl.addEventListener("pointerdown", (ev) => {
+  zbDragging = true;
+  try { zoomBarEl.setPointerCapture(ev.pointerId); } catch (_) { /* best-effort */ }
+  zoomBarTo(ev.clientX);
+  dismissHint();
+  ev.preventDefault();
+});
+zoomBarEl.addEventListener("pointermove", (ev) => { if (zbDragging) zoomBarTo(ev.clientX); });
+function zbEnd(ev) { zbDragging = false; try { zoomBarEl.releasePointerCapture(ev.pointerId); } catch (_) { /* noop */ } }
+zoomBarEl.addEventListener("pointerup", zbEnd);
+zoomBarEl.addEventListener("pointercancel", zbEnd);
+
+/* ---- brand-mark mini-orrery, spin synced to the time machine's speed & direction ---- */
+const bmOrbs = ["bm-o1", "bm-o2", "bm-o3"].map((c) => document.querySelector(".brand-mark ." + c));
+const bmPeriod = [14, 9, 5.5];   // seconds per revolution at the 1× multiplier (inner = faster)
+const bmAng = [0, 0, 0];
+const bmReduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function updateBrandOrrery(dt) {
+  if (bmReduced) return;
+  // compress the huge dps range (1 → 1826 d/s) into a lively but legible spin
+  const mult = 0.3 + Math.log10(state.dps + 1) * 0.7;
+  const sgn = state.playing ? state.dir : 0;   // freeze when paused, reverse when rewinding
+  for (let i = 0; i < 3; i++) {
+    if (!bmOrbs[i]) continue;
+    bmAng[i] = (bmAng[i] + sgn * (360 / bmPeriod[i]) * mult * dt) % 360;
+    bmOrbs[i].style.transform = "rotate(" + bmAng[i].toFixed(2) + "deg)";
+  }
 }
 
 /* ---- scale bar: a nice 1-2-5 length at the focus-plane depth ---- */

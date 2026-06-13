@@ -662,11 +662,8 @@ html, body {
 .brand-mark .bm-o1, .brand-mark .bm-o2, .brand-mark .bm-o3 {
   transform-box: view-box;
   transform-origin: center;
-  animation: bm-spin 21s linear infinite;
+  /* rotation is driven in JS, synced to the time-machine speed — see updateBrandOrrery */
 }
-.brand-mark .bm-o2 { animation-duration: 12s; }
-.brand-mark .bm-o3 { animation-duration: 7s; }
-@keyframes bm-spin { to { transform: rotate(360deg); } }
 
 .brand h1 {
   font-size: clamp(16px, 2.2vw, 23px);
@@ -826,7 +823,9 @@ html, body {
 .time-controls { display: flex; align-items: center; gap: 10px; }
 
 /* zoom position indicator — log scale from moon systems to the Oort edge */
-#zoom-bar { position: relative; width: min(300px, 58vw); height: 10px; pointer-events: none; }
+#zoom-bar { position: relative; width: min(300px, 58vw); height: 10px; pointer-events: auto; cursor: pointer; touch-action: none; }
+#zoom-bar::before { content: ""; position: absolute; left: -4px; right: -4px; top: -11px; bottom: -11px; }  /* taller hit area for tap/touch */
+.zb-track, .zb-oort, .zb-tick, .zb-thumb { pointer-events: none; }
 .zb-track {
   position: absolute;
   left: 0; right: 0; top: 4px;
