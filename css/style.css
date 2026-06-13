@@ -494,6 +494,15 @@ html, body {
 .cad-far { color: #86efac; }
 .cad-loading, .cad-empty { color: var(--ink-dim); font-size: 12px; font-family: var(--mono); padding: 6px 2px; }
 
+#panel-events { right: 72px; top: 120px; width: 300px; max-height: min(44vh, 380px); display: flex; flex-direction: column; }
+#events-list { list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
+#events-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 1px 9px; padding: 8px 10px; border-radius: 10px; background: rgba(140, 165, 220, 0.06); font-size: 12.5px; cursor: pointer; transition: background 0.15s; }
+#events-list li:hover { background: rgba(140, 165, 220, 0.14); }
+#events-list .ev-dot { width: 7px; height: 7px; border-radius: 50%; align-self: center; grid-row: 1 / span 2; }
+#events-list .ev-name { font-weight: 600; color: var(--ink); }
+#events-list .ev-sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); text-align: right; }
+#events-list .ev-date { grid-column: 2 / span 2; font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); }
+
 /* ---- info card ---- */
 #panel-info { left: 16px; bottom: calc(96px + var(--safe-b)); width: 300px; }
 #panel-info .panel-head h2 { text-transform: none; letter-spacing: 0.02em; font-size: 16px; }
@@ -1009,7 +1018,7 @@ html, body {
   .search-wrap { width: 100%; order: 3; margin-left: 0; }
   .hide-sm { display: none !important; }
 
-  #panel-legend, #panel-cad, #panel-sentry {
+  #panel-legend, #panel-cad, #panel-sentry, #panel-events {
     display: none;
     left: 12px;
     right: 12px;
@@ -1020,8 +1029,8 @@ html, body {
     max-height: 46vh;
     overflow-y: auto;
   }
-  #panel-legend.open, #panel-cad.open, #panel-sentry.open { display: block; }
-  #panel-cad.open, #panel-sentry.open { display: flex; }
+  #panel-legend.open, #panel-cad.open, #panel-sentry.open, #panel-events.open { display: block; }
+  #panel-cad.open, #panel-sentry.open, #panel-events.open { display: flex; }
 
   #panel-info { left: 12px; right: 12px; width: auto; bottom: calc(96px + var(--safe-b)); }
   #info-grid { grid-template-columns: repeat(3, 1fr); }
@@ -1046,6 +1055,8 @@ html, body {
   #panel-cad { top: auto; bottom: calc(96px + var(--safe-b)); right: 72px; }
   #panel-sentry { display: flex; }
   #panel-sentry.closed { display: none; }
+  #panel-events { display: flex; }
+  #panel-events.closed { display: none; }
   #fab-col { top: 50%; }
 }
 

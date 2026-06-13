@@ -83,6 +83,7 @@
   <button id="fab-legend" class="fab" title="Layers & legend" aria-label="Layers and legend">◈</button>
   <button id="fab-cad" class="fab" title="Close approaches" aria-label="Close approaches">⚠</button>
   <button id="fab-sentry" class="fab" title="Sentry impact risk" aria-label="Sentry impact risk">☢</button>
+  <button id="fab-events" class="fab" title="Upcoming events" aria-label="Upcoming events">◷</button>
   <button id="fab-sun" class="fab" title="Center on the Sun" aria-label="Center on the Sun">☀</button>
   <button id="fab-view" class="fab" title="Top-down view" aria-label="Toggle top-down view">⊙</button>
 </div>
@@ -104,6 +105,12 @@
 <aside id="panel-sentry" class="panel closed">
   <div class="panel-head"><h2>Sentry watchlist <span class="sub"><span id="sentry-count">0</span> objects · non-zero Earth-impact odds</span></h2><button class="panel-close" data-close="panel-sentry" aria-label="Close">✕</button></div>
   <ul id="sentry-list"><li class="cad-loading">querying JPL CNEOS Sentry…</li></ul>
+</aside>
+
+<!-- ======================= Upcoming events ======================= -->
+<aside id="panel-events" class="panel closed">
+  <div class="panel-head"><h2>Upcoming <span class="sub">close approaches, comet perihelia, oppositions &amp; showers</span></h2><button class="panel-close" data-close="panel-events" aria-label="Close">✕</button></div>
+  <ul id="events-list"><li class="cad-loading">computing events…</li></ul>
 </aside>
 
 <!-- ======================= Selected object card ======================= -->

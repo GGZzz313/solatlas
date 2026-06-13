@@ -2198,6 +2198,7 @@ async function loadAsteroids() {
     }
     renderCloseApproaches(snap.cad);
     renderSentry(snap.sentry);
+    renderEvents(snap);
     loaderReady();
     applyState(location.hash);        // restore a shared/deep-linked view, if any
     lastHash = encodeState();         // baseline so the writer doesn't immediately rewrite a clean URL
@@ -2275,6 +2276,114 @@ function renderCloseApproaches(resp) {
     }
   } catch (err) {
     list.innerHTML = '<li class="cad-empty">close-approach feed unavailable</li>';
+  }
+}
+
+/* ============================================================
+   "Upcoming" events feed — all computed client-side
+   ============================================================ */
+const EV_DOT = { cad: "#ff6b6b", com: "#8ce9ff", opp: "#9ec5ff", met: "#fde68a" };
+const SHOWERS = [
+  { m: 0, d: 3, name: "Quadrantids", zhr: 110 }, { m: 3, d: 22, name: "Lyrids", zhr: 18 },
+  { m: 4, d: 6, name: "Eta Aquariids", zhr: 50 }, { m: 7, d: 12, name: "Perseids", zhr: 100 },
+  { m: 9, d: 21, name: "Orionids", zhr: 20 }, { m: 10, d: 17, name: "Leonids", zhr: 15 },
+  { m: 11, d: 14, name: "Geminids", zhr: 150 }, { m: 11, d: 22, name: "Ursids", zhr: 10 },
+];
+function jumpToJD(jd) { state.simJD = jd; state.needFullUpdate = true; buildPlanetOrbits(); }
+function selectByName(name) {
+  const q = (name || "").toLowerCase().replace(/[()]/g, "").trim();
+  if (!q) return false;
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    for (let k = 0; k < g.count; k++) {
+      const nm = g.meta[k].name.toLowerCase();
+      if (nm === q || nm.includes(q)) { if (!g.visible) { g.visible = true; renderLegend(); } selectObject(gi, k); return true; }
+    }
+  }
+  return false;
+}
+function evCloseApproaches(snap) {
+  const out = [], c = snap.cad; if (!c || !c.fields) return out;
+  const ix = {}; c.fields.forEach((f, k) => (ix[f] = k)); const now = jdNow();
+  for (const r of (c.data || [])) {
+    const jd = +r[ix.jd]; if (!(jd >= now - 0.5)) continue;
+    const des = r[ix.des] || "?", ld = (+r[ix.dist] || 0) / 0.002569;
+    out.push({ jd, kind: "cad", label: des + " — Earth flyby", sub: ld.toFixed(2) + " LD",
+      act: () => { if (!selectByName(des)) selectPlanet(EARTH_IDX); jumpToJD(jd); } });
+  }
+  return out;
+}
+function evCometPerihelia(now, end) {
+  const out = [];
+  for (const gi of [GI.COM, GI.LPC]) {
+    const g = groups[gi];
+    for (let k = 0; k < g.count; k++) {
+      const o = k * STRIDE, tp = g.el[o + 5] + J2000, n = g.el[o + 4];
+      if (!(n > 0)) continue;
+      let peri = tp;
+      if (gi === GI.COM) { const period = TWO_PI / n; peri = tp + Math.ceil((now - tp) / period) * period; }
+      if (peri < now - 1 || peri > end) continue;
+      const m = g.meta[k], ggi = gi, kk = k;
+      out.push({ jd: peri, kind: "com", label: m.name + " — perihelion", sub: "q " + m.q.toFixed(2) + " au",
+        act: () => { if (!groups[ggi].visible) { groups[ggi].visible = true; renderLegend(); } selectObject(ggi, kk); jumpToJD(peri); } });
+    }
+  }
+  out.sort((a, b) => a.jd - b.jd);
+  return out.slice(0, 14);   // soonest few, so comets don't flood the list
+}
+function dLon(p, jd) {
+  const E = [0, 0, 0], M = [0, 0, 0];
+  planetPosition(PLANETS[EARTH_IDX], jd, E); planetPosition(p, jd, M);
+  let d = Math.atan2(M[1], M[0]) - Math.atan2(E[1], E[0]);
+  while (d > Math.PI) d -= TWO_PI; while (d < -Math.PI) d += TWO_PI;
+  return d;
+}
+function evOppositions(now, end) {
+  const out = [];
+  for (let i = 3; i < PLANETS.length; i++) {            // Mars … Neptune (superior planets)
+    const p = PLANETS[i]; let prev = dLon(p, now), found = false;
+    for (let jd = now + 2; jd <= end && !found; jd += 2) {
+      const cur = dLon(p, jd);
+      if ((prev <= 0 && cur > 0) || (prev >= 0 && cur < 0)) {   // heliocentric lons coincide → opposition
+        let lo = jd - 2, hi = jd;
+        for (let b = 0; b < 8; b++) { const mid = (lo + hi) / 2; if (Math.sign(dLon(p, mid)) === Math.sign(prev)) lo = mid; else hi = mid; }
+        const oj = (lo + hi) / 2, ii = i;
+        out.push({ jd: oj, kind: "opp", label: p.name + " at opposition", sub: "closest & brightest", act: () => { selectPlanet(ii); jumpToJD(oj); } });
+        found = true;
+      }
+      prev = cur;
+    }
+  }
+  return out;
+}
+function evShowers(now, end) {
+  const out = [], y0 = new Date((now - 2440587.5) * 86400000).getUTCFullYear();
+  for (const s of SHOWERS) {
+    for (const y of [y0, y0 + 1]) {
+      const jd = new Date(Date.UTC(y, s.m, s.d, 4)).getTime() / 86400000 + 2440587.5;
+      if (jd < now - 1 || jd > end) continue;
+      out.push({ jd, kind: "met", label: s.name + " — meteor peak", sub: "~" + s.zhr + "/hr", act: () => jumpToJD(jd) });
+      break;
+    }
+  }
+  return out;
+}
+function renderEvents(snap) {
+  const list = $("events-list"); if (!list) return;
+  const now = jdNow(), end = now + 800;
+  let evs = [...evCloseApproaches(snap), ...evCometPerihelia(now, end), ...evOppositions(now, end), ...evShowers(now, end)];
+  evs = evs.filter((e) => e.jd >= now - 1 && e.jd <= end).sort((a, b) => a.jd - b.jd);
+  if (!evs.length) { list.innerHTML = '<li class="cad-empty">no events in the window</li>'; return; }
+  list.innerHTML = "";
+  for (const e of evs) {
+    const d = new Date((e.jd - 2440587.5) * 86400000);
+    const when = `${String(d.getUTCDate()).padStart(2, "0")} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="ev-dot" style="background:${EV_DOT[e.kind]};box-shadow:0 0 7px ${EV_DOT[e.kind]}"></span>` +
+      `<span class="ev-name"></span><span class="ev-sub">${e.sub}</span><span class="ev-date">${when}</span>`;
+    li.querySelector(".ev-name").textContent = e.label;
+    li.addEventListener("click", e.act);
+    list.appendChild(li);
   }
 }
 
@@ -3433,6 +3542,7 @@ function togglePanel(id, fab) {
 $("fab-legend").addEventListener("click", (ev) => togglePanel("panel-legend", ev.currentTarget));
 $("fab-cad").addEventListener("click", (ev) => togglePanel("panel-cad", ev.currentTarget));
 $("fab-sentry").addEventListener("click", (ev) => togglePanel("panel-sentry", ev.currentTarget));
+$("fab-events").addEventListener("click", (ev) => togglePanel("panel-events", ev.currentTarget));
 
 function setTopDown(on, skipCamera) {
   state.topDown = on;
