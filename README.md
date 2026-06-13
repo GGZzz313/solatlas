@@ -37,6 +37,11 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 - **Planets are first-class too** — click or search any planet for its live orbital
   elements, diameter, rotation, moon count and a real photo; double-click space to
   return to the Sun.
+- **Earth's artificial moons** — fly down to Earth and the ~15,700 active satellites
+  from CelesTrak appear, propagated live with SGP4: the dense LEO swarm, the GPS/MEO
+  ring and the geostationary belt. Click any one (the ISS, a Starlink, a GEO bird) for
+  its orbit class, altitude, period and inclination. TLEs are only accurate near the
+  present, so the layer honestly fades if you time-travel far.
 - **Hazard highlight** — toggle a layer that lights up every Potentially Hazardous
   Asteroid in orange.
 - **A time machine** — play the solar system forward or backward at up to 5 years per
@@ -64,6 +69,7 @@ frameworks, no API keys — open `index.html` over HTTP and fly.
 | [JPL CNEOS Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) | Earth-impact risk table (Torino/Palermo scale, probabilities) |
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
 | [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Orbital elements for all ~457 planetary moons (relative to their parent planet) |
+| [CelesTrak](https://celestrak.org/NORAD/elements/) | Active-satellite TLEs (refreshed daily, propagated client-side with SGP4) |
 | [JPL Approximate Planetary Ephemeris](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | Planet positions (embedded Keplerian elements + rates) |
 
 Spacecraft imagery for the ~21 visited/resolved bodies (Ceres, Vesta, Pluto, Bennu,
@@ -120,6 +126,7 @@ node test/orbits.test.js
    falloff for asteroids/stars/planets, line loops for orbits, a CSS bloom tracking the
    Sun's projected position, and a twinkling 4,700-star backdrop with a milky-way band.
 
-The app is three files — `index.html`, `css/style.css`, `js/app.js` — plus
-`scripts/build-data.mjs` (the data builder, Node-only) and `img/bodies/` (the
-spacecraft photos). Still zero runtime dependencies.
+The app is three files — `index.html`, `css/style.css`, `js/app.js` — plus the data
+builders in `scripts/` (Node-only), `img/bodies/` (the spacecraft photos), and one
+vendored runtime library: [`satellite.js`](https://github.com/shashwatak/satellite-js)
+(MIT) for SGP4 satellite propagation. No build step.

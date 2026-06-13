@@ -1,0 +1,38 @@
+name: satellite-refresh
+
+# Active-satellite TLEs from CelesTrak go stale within days, so refresh
+# daily — separately from the weekly small-body snapshot (data-refresh.yml).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * *" # daily, 06:23 UTC
+  push:
+    paths: [".github/workflows/satellite-refresh.yml", "scripts/build-satellites.mjs"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: satellite-refresh-${{ github.ref }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build satellite TLE snapshot
+        run: node scripts/build-satellites.mjs
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/satellites.json
+          if git diff --cached --quiet; then
+            echo "Snapshot unchanged"
+            exit 0
+          fi
+          git commit -m "Refresh active-satellite TLE snapshot"
+          git push

@@ -304,6 +304,7 @@ const state = {
   selPlanet: null,         // selected planet index
   selMoon: null,           // selected moon index
   selSun: false,           // the Sun is selected
+  selSat: null,            // selected satellite index
   showSun: true,           // Sun population (point, halo, picking)
   focus: null,             // camera target: null=Sun | {planet:i} | {small:[gi,k]}
   camEaseRate: 9,          // lowered during the launch dolly-in, restored after
@@ -344,6 +345,20 @@ const moons = {
   posBuf: null, sizeBuf: null, dirty: true,
 };
 let plutoRef = null;             // [gi,k] of Pluto in the asteroid groups
+
+// Active satellites (CelesTrak TLEs, propagated with vendored SGP4). Earth's
+// artificial moons — only loaded and drawn when the camera reaches Earth.
+const EARTH_IDX = 2;             // planetState index of Earth
+const OBLIQ = 23.4392911 * DEG;  // ecliptic obliquity (equatorial → ecliptic)
+const AU_KM = 149597870.7;
+const sats = {
+  loaded: false, loading: false, visible: true,
+  count: 0, recs: [], names: [],
+  pos: new Float32Array(0), sizes: new Float32Array(0),
+  posBuf: null, sizeBuf: null, dirty: false,
+  sliceCursor: 0, fullUpdate: true,
+  epochJD: 0,                    // snapshot reference epoch (TLEs valid near here)
+};
 
 /* ============================================================
    4. WebGL renderer
@@ -832,6 +847,7 @@ function render(now) {
 
   // propagate asteroid + planet + moon positions when time moved — BEFORE the
   // camera reads focusPosition(), or a focused planet is aimed at one frame late
+  let satMoved = false;
   if (state.simJD !== simAtLastPropagate || state.needFullUpdate) {
     propagate();
     simAtLastPropagate = state.simJD;
@@ -844,6 +860,14 @@ function render(now) {
     }
     updateMoonPositions(state.simJD);
     if (state.selMoon != null) buildMoonOrbit(state.selMoon);
+    satMoved = true;
+  }
+
+  // satellites: propagate only at Earth, within the TLE's valid window
+  const earthFocused = state.focus && state.focus.planet === EARTH_IDX;
+  if (sats.loaded && sats.visible && earthFocused && satEpochFade() > 0.01 &&
+      (satMoved || sats.fullUpdate)) {
+    updateSatellites(state.simJD);
   }
 
   // camera easing (orientation, distance, and focus target)
@@ -999,6 +1023,24 @@ function render(now) {
     gl.uniform1f(PT.uAlpha, 0.95);
     bindPointAttrs(moons.posBuf, moons.sizeBuf, null, 0);
     gl.drawArrays(gl.POINTS, 0, moons.count);
+  }
+
+  // satellites (Earth's artificial moons) — only in the Earth-focus view
+  if (sats.loaded && sats.visible && earthFocused) {
+    const sf = satEpochFade();
+    if (sf > 0.01) {
+      if (sats.dirty) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, sats.posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, sats.pos, gl.DYNAMIC_DRAW);
+        sats.dirty = false;
+      }
+      gl.uniform1f(PT.uMinPx, 1.3 * dpr);
+      gl.uniform1f(PT.uMaxPx, 5 * dpr);
+      gl.uniform3f(PT.uColor, 0.85, 0.95, 1.0);
+      gl.uniform1f(PT.uAlpha, 0.85 * sf);
+      bindPointAttrs(sats.posBuf, sats.sizeBuf, null, 0);
+      gl.drawArrays(gl.POINTS, 0, sats.count);
+    }
   }
 
   // planets
@@ -1179,8 +1221,12 @@ function updateOverlays(pixScale) {
   } else if (state.selSun) {
     selPos = [0, 0, 0];
     selName = "Sun";
+  } else if (state.selSat != null && sats.pos[state.selSat * 3] < 1e8) {
+    const k = state.selSat;
+    selPos = [sats.pos[k * 3], sats.pos[k * 3 + 1], sats.pos[k * 3 + 2]];
+    selName = sats.names[k];
   }
-  if (selPos) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
+  if (selPos && state.selSat == null) $("info-r").textContent = Math.hypot(selPos[0], selPos[1], selPos[2]).toFixed(3) + " au";
   updateScaleBar();
   updateZoomBar();
   if (selPos) {
@@ -1530,6 +1576,86 @@ function buildMoons(data) {
   return n;
 }
 
+/* Lazy-load the active-satellite catalogue on first arrival at Earth. */
+function loadSatellites() {
+  if (sats.loaded || sats.loading || typeof satellite === "undefined") return;
+  sats.loading = true;
+  fetchJSON("data/satellites.json").then((data) => {
+    const list = (data && data.sats) || [];
+    for (const [name, l1, l2] of list) {
+      const rec = satellite.twoline2satrec(l1, l2);
+      if (rec.error) continue;
+      sats.recs.push(rec);
+      sats.names.push(name);
+    }
+    sats.count = sats.recs.length;
+    sats.pos = new Float32Array(sats.count * 3);
+    sats.sizes = new Float32Array(sats.count).fill(0.012);
+    sats.posBuf = gl.createBuffer();
+    sats.sizeBuf = makeBuffer(sats.sizes);
+    sats.epochJD = data.generated ? new Date(data.generated).getTime() / 86400000 + 2440587.5 : jdNow();
+    sats.loaded = true;
+    sats.loading = false;
+    sats.fullUpdate = true;
+    renderLegend();
+    // if we're already at Earth, surface the count badge now that data's in
+    if (state.selPlanet === EARTH_IDX && !$("info-badges").querySelector(".badge-sat")) {
+      $("info-badges").insertAdjacentHTML("beforeend",
+        `<span class="badge badge-sat">🛰 ${sats.count.toLocaleString("en-US")} satellites</span>`);
+    }
+  }).catch((err) => { console.warn("satellite load failed:", err); sats.loading = false; });
+}
+
+// TLEs are only accurate for days, but the time machine is for watching orbits,
+// so keep the layer visible across normal exploration (≈±1 yr of the snapshot)
+// and fade it only for deliberate time-travel — by ~2 years out it's gone.
+function satEpochFade() {
+  const d = Math.abs(state.simJD - sats.epochJD);   // days from the TLE snapshot
+  return clamp(1 - (d - 365) / 365, 0, 1);
+}
+
+// SGP4 → TEME km → ecliptic au → + Earth's heliocentric position. Sliced so a
+// 15k-object propagation doesn't stall the frame while time is playing.
+const SAT_SLICES = 4;
+const _satDate = new Date();
+function updateSatellites(jd) {
+  if (!sats.count) return;
+  _satDate.setTime((jd - 2440587.5) * 86400000);
+  const ep = planetState[EARTH_IDX].pos;
+  const ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ);
+  const slices = sats.fullUpdate ? 1 : SAT_SLICES;
+  const span = Math.ceil(sats.count / slices);
+  const from = sats.fullUpdate ? 0 : sats.sliceCursor * span;
+  const to = Math.min(from + span, sats.count);
+  for (let k = from; k < to; k++) {
+    const pv = satellite.propagate(sats.recs[k], _satDate);
+    const p = pv && pv.position;
+    if (!p || !isFinite(p.x)) { sats.pos[k * 3] = 1e9; continue; }
+    const xe = p.x / AU_KM, ye = p.y / AU_KM, ze = p.z / AU_KM;
+    sats.pos[k * 3] = ep[0] + xe;
+    sats.pos[k * 3 + 1] = ep[1] + ye * ce + ze * se;
+    sats.pos[k * 3 + 2] = ep[2] - ye * se + ze * ce;
+  }
+  sats.sliceCursor = (sats.sliceCursor + 1) % SAT_SLICES;
+  sats.fullUpdate = false;
+  sats.dirty = true;
+}
+
+// derive orbit regime + altitudes from a satrec for the info card
+function satFacts(k) {
+  const rec = sats.recs[k];
+  const a = Math.pow(398600.4418 / (rec.no * rec.no / 3600), 1 / 3);  // semi-major (km), no in rad/min
+  const peri = a * (1 - rec.ecco) - 6371;
+  const apo = a * (1 + rec.ecco) - 6371;
+  const periodMin = (2 * Math.PI) / rec.no;
+  const meanAlt = (peri + apo) / 2;
+  const regime = meanAlt < 2000 ? "Low Earth orbit"
+    : meanAlt < 34000 ? "Medium Earth orbit"
+    : meanAlt < 37000 ? "Geostationary / GEO"
+    : "High / elliptical orbit";
+  return { regime, peri, apo, periodMin, inc: rec.inclo / DEG, norad: rec.satnum };
+}
+
 let loadedOnce = false;
 async function loadAsteroids() {
   const fill = $("loader-fill");
@@ -1762,9 +1888,14 @@ function renderLegend() {
       desc: "Every planetary satellite in JPL Horizons, orbiting its parent planet. Click a planet and zoom in to explore its moon system.",
       get on() { return moons.visible; },
       toggle() { moons.visible = !moons.visible; if (!moons.visible && state.selMoon != null) clearSelection(); } },
+    { label: "Satellites", always: true, css: "#bfe3ff",
+      count: sats.loaded ? sats.count : "—",
+      desc: "Active artificial satellites — Earth's man-made moons, from CelesTrak (live TLEs, propagated with SGP4). Click Earth to fly down and see the LEO swarm, the GPS/MEO ring and the geostationary belt. Positions are only accurate near the present, so the layer fades if you time-travel far.",
+      get on() { return sats.visible; },
+      toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null) clearSelection(); } },
   ];
   for (const o of overlays) {
-    if (!o.count) continue;
+    if (!o.always && !o.count) continue;
     const li = legendRow(o.label, o.count, o.css, o.desc, (el) => {
       o.toggle();
       el.classList.toggle("off", !o.on);
@@ -1790,6 +1921,8 @@ function selectObject(gi, k) {
   state.selPlanet = null;
   state.selMoon = null;
   state.selSun = false;
+  state.selSat = null;
+  satLayout(false);
   // selecting a small body with its own moons (Pluto) focuses the camera on it
   if (plutoRef && gi === plutoRef[0] && k === plutoRef[1]) focusOn({ small: plutoRef });
   const o = k * STRIDE, el = g.el;
@@ -1858,6 +1991,7 @@ function retarget() {
 function focusOn(f) {
   state.focus = f;
   retarget();
+  if (f.planet === EARTH_IDX) sats.fullUpdate = true;   // force a full SGP4 pass on arrival
   let aMax = 0, aAny = 0;
   for (let k = 0; k < moons.count; k++) {
     const isChild = f.planet != null
@@ -1883,8 +2017,11 @@ function selectPlanet(i) {
   state.selected = null;
   state.selMoon = null;
   state.selSun = false;
+  state.selSat = null;
+  satLayout(false);
   selOrbitCount = 0;
   focusOn({ planet: i });
+  if (i === EARTH_IDX) loadSatellites();   // Earth's artificial moons, on arrival
   let nMoons = 0;
   for (let k = 0; k < moons.count; k++) if (moons.parentIdx[k] === i) nMoons++;
   $("info-name").textContent = ps.def.name;
@@ -1892,6 +2029,7 @@ function selectPlanet(i) {
   const badges = $("info-badges");
   badges.innerHTML = "";
   if (nMoons) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-dwarf">● ${nMoons} moon${nMoons > 1 ? "s" : ""} mapped</span>`);
+  if (i === EARTH_IDX && sats.loaded) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-sat">🛰 ${sats.count.toLocaleString("en-US")} satellites</span>`);
   const el = planetElements(ps.def, state.simJD, { a: 0, e: 0, i: 0, om: 0, w: 0, M: 0 });
   $("info-a").textContent = el.a.toFixed(3) + " au";
   $("info-e").textContent = el.e.toFixed(4);
@@ -1914,6 +2052,8 @@ function selectSun() {
   state.selected = null;
   state.selPlanet = null;
   state.selMoon = null;
+  state.selSat = null;
+  satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
   $("info-name").textContent = "Sun";
@@ -1936,12 +2076,43 @@ function selectSun() {
   $("panel-info").hidden = false;
 }
 
+// satellites use a dedicated panel layout; toggle it vs the body grid/preview
+function satLayout(on) {
+  $("info-sat").hidden = !on;
+  $("info-grid").hidden = on;
+  $("info-preview").hidden = on;
+}
+function selectSatellite(k) {
+  state.selSat = k;
+  state.selected = null;
+  state.selPlanet = null;
+  state.selMoon = null;
+  state.selSun = false;
+  selOrbitCount = 0;
+  moonOrbitCount = 0;
+  stopPreview();
+  const f = satFacts(k);
+  $("info-name").textContent = sats.names[k];
+  $("info-class").textContent = "Artificial satellite · NORAD " + f.norad;
+  $("info-badges").innerHTML = `<span class="badge badge-sat">🛰 ${f.regime}</span>`;
+  $("info-link").hidden = true;
+  satLayout(true);
+  $("sat-regime").textContent = f.regime;
+  $("sat-alt").textContent = f.peri < -50 ? "—"
+    : Math.round(Math.max(f.peri, 0)).toLocaleString("en-US") + " × " + Math.round(f.apo).toLocaleString("en-US") + " km";
+  $("sat-period").textContent = f.periodMin < 1440 ? f.periodMin.toFixed(0) + " min" : (f.periodMin / 1440).toFixed(2) + " days";
+  $("sat-inc").textContent = f.inc.toFixed(1) + "°";
+  $("panel-info").hidden = false;
+}
+
 function selectMoon(k) {
   const m = moons.meta[k];
   state.selMoon = k;
   state.selected = null;
   state.selPlanet = null;
   state.selSun = false;
+  state.selSat = null;
+  satLayout(false);
   selOrbitCount = 0;
   buildMoonOrbit(k);
   $("info-name").textContent = m.name;
@@ -1984,6 +2155,8 @@ function clearSelection() {
   state.selPlanet = null;
   state.selMoon = null;
   state.selSun = false;
+  state.selSat = null;
+  satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
   stopPreview();
@@ -2214,7 +2387,19 @@ function pickAt(x, y) {
       bestD = d; bestMoon = k; bestPlanet = -1; best = null;
     }
   }
-  if (bestMoon >= 0) selectMoon(bestMoon);
+  // satellites — only in the Earth-focus view, where they're the whole point
+  let bestSat = -1;
+  if (sats.loaded && sats.visible && state.focus && state.focus.planet === EARTH_IDX && satEpochFade() > 0.01) {
+    for (let k = 0; k < sats.count; k++) {
+      if (sats.pos[k * 3] > 1e8) continue;
+      const p = project(sats.pos[k * 3], sats.pos[k * 3 + 1], sats.pos[k * 3 + 2]);
+      if (!p) continue;
+      const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; bestSat = k; bestMoon = -1; bestPlanet = -1; best = null; }
+    }
+  }
+  if (bestSat >= 0) selectSatellite(bestSat);
+  else if (bestMoon >= 0) selectMoon(bestMoon);
   else if (bestPlanet >= 0) selectPlanet(bestPlanet);
   else if (bestSun) selectSun();
   else if (best) selectObject(best[0], best[1]);
@@ -2240,6 +2425,14 @@ function runSearch(q) {
     if (moons.meta[k].name.toLowerCase().includes(q)) {
       const kk = k;
       hits.push({ name: moons.meta[k].name + " · " + moons.meta[k].parentName, cls: "MOON", select: () => selectMoon(kk) });
+    }
+  }
+  if (sats.loaded) {
+    for (let k = 0; k < sats.count && hits.length < 7; k++) {
+      if (sats.names[k].toLowerCase().includes(q)) {
+        const kk = k;
+        hits.push({ name: sats.names[k], cls: "SAT", select: () => { focusOn({ planet: EARTH_IDX }); selectSatellite(kk); } });
+      }
     }
   }
   outer:

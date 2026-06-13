@@ -504,6 +504,14 @@ html, body {
 #info-grid[hidden] { display: none; }
 #panel-info { max-height: min(74vh, 640px); overflow-y: auto; scrollbar-width: thin; }
 
+/* ---- satellite info ---- */
+#info-sat[hidden] { display: none; }
+.sat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.sat-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
+.sat-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.sat-src { margin-top: 10px; font-size: 10px; color: var(--ink-dim); font-family: var(--mono); }
+.badge-sat { color: #bfe3ff; background: rgba(125, 190, 255, 0.14); }
+
 /* ---- object preview ---- */
 #info-preview {
   position: relative;

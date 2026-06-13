@@ -127,6 +127,15 @@
     <div id="info-row-spec" hidden><dt>spectral type</dt><dd id="info-spec">—</dd></div>
     <div id="info-row-moid" hidden><dt>Earth MOID</dt><dd id="info-moid">—</dd></div>
   </dl>
+  <div id="info-sat" hidden>
+    <dl class="sat-grid">
+      <div><dt>orbit</dt><dd id="sat-regime">—</dd></div>
+      <div><dt>altitude</dt><dd id="sat-alt">—</dd></div>
+      <div><dt>period</dt><dd id="sat-period">—</dd></div>
+      <div><dt>inclination</dt><dd id="sat-inc">—</dd></div>
+    </dl>
+    <p class="sat-src">live TLE · CelesTrak / SGP4 · positions valid near present</p>
+  </div>
   <a id="info-link" class="info-link" target="_blank" rel="noopener" hidden>full record · JPL Small-Body Database ↗</a>
 </aside>
 
@@ -164,6 +173,7 @@
 
 <div id="hint">drag to orbit · scroll / pinch to zoom · tap an asteroid</div>
 
+<script src="js/satellite.min.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
