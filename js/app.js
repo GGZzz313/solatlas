@@ -353,7 +353,7 @@ const EARTH_IDX = 2;             // planetState index of Earth
 const OBLIQ = 23.4392911 * DEG;  // ecliptic obliquity (equatorial → ecliptic)
 const AU_KM = 149597870.7;
 const sats = {
-  loaded: false, loading: false, visible: true,
+  loaded: false, loading: false, visible: false,   // off by default — toggle on at Earth
   count: 0, recs: [], names: [],
   pos: new Float32Array(0), sizes: new Float32Array(0),
   posBuf: null, sizeBuf: null, dirty: false,
@@ -863,7 +863,6 @@ function render(now) {
 
   // propagate asteroid + planet + moon positions when time moved — BEFORE the
   // camera reads focusPosition(), or a focused planet is aimed at one frame late
-  let satMoved = false;
   if (state.simJD !== simAtLastPropagate || state.needFullUpdate) {
     propagate();
     simAtLastPropagate = state.simJD;
@@ -881,14 +880,12 @@ function render(now) {
       gl.bindBuffer(gl.ARRAY_BUFFER, c.posBuf);
       gl.bufferData(gl.ARRAY_BUFFER, c.pos, gl.DYNAMIC_DRAW);
     }
-    satMoved = true;
   }
 
-  // satellites: propagate only at Earth, within the TLE's valid window
+  // satellites: live, only at Earth, while the TLE snapshot is fresh
   const earthFocused = state.focus && state.focus.planet === EARTH_IDX;
-  if (sats.loaded && sats.visible && earthFocused && satEpochFade() > 0.01 &&
-      (satMoved || sats.fullUpdate)) {
-    updateSatellites(state.simJD);
+  if (sats.loaded && sats.visible && earthFocused && satEpochFade() > 0.01) {
+    updateSatellites();   // live: advance at real-time every frame, not on the sim clock
   }
 
   // camera easing (orientation, distance, and focus target)
@@ -1706,21 +1703,23 @@ function loadSatellites() {
   }).catch((err) => { console.warn("satellite load failed:", err); sats.loading = false; });
 }
 
-// TLEs are only accurate for days, but the time machine is for watching orbits,
-// so keep the layer visible across normal exploration (≈±1 yr of the snapshot)
-// and fade it only for deliberate time-travel — by ~2 years out it's gone.
+// Satellites are shown LIVE (real-time), not on the sim clock — you can't watch a
+// 90-minute LEO orbit at 1 month/second. So the fade only guards data staleness:
+// full while the daily TLE snapshot is fresh, gone if it ever falls >2 yr behind.
 function satEpochFade() {
-  const d = Math.abs(state.simJD - sats.epochJD);   // days from the TLE snapshot
+  const d = Math.abs(jdNow() - sats.epochJD);       // days since the TLE snapshot
   return clamp(1 - (d - 365) / 365, 0, 1);
 }
 
-// SGP4 → TEME km → ecliptic au → + Earth's heliocentric position. Sliced so a
-// 15k-object propagation doesn't stall the frame while time is playing.
+// SGP4 → TEME km → ecliptic au → + Earth's heliocentric position. Propagated to
+// WALL-CLOCK now (live), so the rings drift smoothly instead of aliasing into
+// staggered dashes under the fast time machine. Sliced so the ~15k-object pass
+// doesn't stall the frame; at real-time the per-slice lag is sub-pixel.
 const SAT_SLICES = 4;
 const _satDate = new Date();
-function updateSatellites(jd) {
+function updateSatellites() {
   if (!sats.count) return;
-  _satDate.setTime((jd - 2440587.5) * 86400000);
+  _satDate.setTime(Date.now());
   const ep = planetState[EARTH_IDX].pos;
   const ce = Math.cos(OBLIQ), se = Math.sin(OBLIQ);
   const slices = sats.fullUpdate ? 1 : SAT_SLICES;
@@ -2020,6 +2019,13 @@ function renderLegend() {
       li.classList.toggle("off", !state.showPlanets);
       if (!state.showPlanets && state.selPlanet != null) clearSelection();
     }, state.showPlanets));
+  // Moons sit right under Planets (they're natural bodies, not an overlay)
+  const moonsRow = legendRow("Moons", moons.count, "#c7d2e8",
+    "Every planetary satellite in JPL Horizons, orbiting its parent planet. Click a planet and zoom in to explore its moon system.",
+    (el) => { moons.visible = !moons.visible; if (!moons.visible && state.selMoon != null) clearSelection(); el.classList.toggle("off", !moons.visible); },
+    moons.visible);
+  moonsRow.classList.add("legend-toggle");
+  ul.appendChild(moonsRow);
   groups.forEach((g, gi) => {
     if (!g.count) return;
     ul.appendChild(legendRow(g.label, g.count, g.css, g.desc, (li) => {
@@ -2039,13 +2045,9 @@ function renderLegend() {
       desc: "Potentially Hazardous Asteroids — larger than ~140 m with orbits passing within 0.05 au (~19 lunar distances) of Earth's orbit. Lights them up in orange.",
       get on() { return state.showPHA; },
       toggle() { state.showPHA = !state.showPHA; } },
-    { label: "Moons", count: moons.count, css: "#c7d2e8",
-      desc: "Every planetary satellite in JPL Horizons, orbiting its parent planet. Click a planet and zoom in to explore its moon system.",
-      get on() { return moons.visible; },
-      toggle() { moons.visible = !moons.visible; if (!moons.visible && state.selMoon != null) clearSelection(); } },
     { label: "Satellites", always: true, css: "#bfe3ff",
       count: sats.loaded ? sats.count : "—",
-      desc: "Active artificial satellites — Earth's man-made moons, from CelesTrak (live TLEs, propagated with SGP4). Click Earth to fly down and see the LEO swarm, the GPS/MEO ring and the geostationary belt. Positions are only accurate near the present, so the layer fades if you time-travel far.",
+      desc: "Active artificial satellites — Earth's man-made moons, from CelesTrak (live TLEs, propagated with SGP4). Click Earth to fly down and see the LEO swarm, the GPS/MEO ring and the geostationary belt. Shown live: positions update in real time, independent of the time machine.",
       get on() { return sats.visible; },
       toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null) clearSelection(); } },
     { label: "Spacecraft", count: craft.length, css: CRAFT_CSS,
