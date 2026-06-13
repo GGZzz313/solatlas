@@ -354,6 +354,8 @@ const OBLIQ = 23.4392911 * DEG;  // ecliptic obliquity (equatorial → ecliptic)
 const AU_KM = 149597870.7;
 const sats = {
   loaded: false, loading: false, visible: false,   // off by default — toggle on at Earth
+  debrisVisible: false,          // tracked debris, separate toggle + colour, also off
+  payloadCount: 0,               // split index: [0,payloadCount)=payloads, [payloadCount,count)=debris
   count: 0, recs: [], names: [],
   pos: new Float32Array(0), sizes: new Float32Array(0),
   posBuf: null, sizeBuf: null, dirty: false,
@@ -884,7 +886,7 @@ function render(now) {
 
   // satellites: live, only at Earth, while the TLE snapshot is fresh
   const earthFocused = state.focus && state.focus.planet === EARTH_IDX;
-  if (sats.loaded && sats.visible && earthFocused && satEpochFade() > 0.01) {
+  if (sats.loaded && (sats.visible || sats.debrisVisible) && earthFocused && satEpochFade() > 0.01) {
     updateSatellites();   // live: advance at real-time every frame, not on the sim clock
   }
 
@@ -1055,8 +1057,9 @@ function render(now) {
     gl.drawArrays(gl.POINTS, 0, moons.count);
   }
 
-  // satellites (Earth's artificial moons) — only in the Earth-focus view
-  if (sats.loaded && sats.visible && earthFocused) {
+  // satellites + debris (Earth's artificial moons) — only in the Earth-focus view.
+  // One buffer, two contiguous ranges drawn in two colours: payloads, then debris.
+  if (sats.loaded && (sats.visible || sats.debrisVisible) && earthFocused) {
     const sf = satEpochFade();
     if (sf > 0.01) {
       if (sats.dirty) {
@@ -1066,10 +1069,18 @@ function render(now) {
       }
       gl.uniform1f(PT.uMinPx, 1.3 * dpr);
       gl.uniform1f(PT.uMaxPx, 5 * dpr);
-      gl.uniform3f(PT.uColor, 0.85, 0.95, 1.0);
-      gl.uniform1f(PT.uAlpha, 0.85 * sf);
       bindPointAttrs(sats.posBuf, sats.sizeBuf, null, 0);
-      gl.drawArrays(gl.POINTS, 0, sats.count);
+      const pc = sats.payloadCount;
+      if (sats.visible && pc > 0) {
+        gl.uniform3f(PT.uColor, 0.85, 0.95, 1.0);
+        gl.uniform1f(PT.uAlpha, 0.85 * sf);
+        gl.drawArrays(gl.POINTS, 0, pc);
+      }
+      if (sats.debrisVisible && sats.count > pc) {
+        gl.uniform3f(PT.uColor, 1.0, 0.47, 0.29);   // debris — orange
+        gl.uniform1f(PT.uAlpha, 0.8 * sf);
+        gl.drawArrays(gl.POINTS, pc, sats.count - pc);
+      }
     }
   }
 
@@ -1684,6 +1695,7 @@ function loadSatellites() {
       sats.names.push(name);
     }
     sats.count = sats.recs.length;
+    sats.payloadCount = data.payloadCount != null ? Math.min(data.payloadCount, sats.count) : sats.count;
     sats.pos = new Float32Array(sats.count * 3);
     sats.sizes = new Float32Array(sats.count).fill(0.012);
     sats.posBuf = gl.createBuffer();
@@ -1698,7 +1710,7 @@ function loadSatellites() {
     // if we're already at Earth, surface the count badge now that data's in
     if (state.selPlanet === EARTH_IDX && !$("info-badges").querySelector(".badge-sat")) {
       $("info-badges").insertAdjacentHTML("beforeend",
-        `<span class="badge badge-sat">🛰 ${sats.count.toLocaleString("en-US")} satellites</span>`);
+        `<span class="badge badge-sat">🛰 ${sats.payloadCount.toLocaleString("en-US")} satellites</span>`);
     }
   }).catch((err) => { console.warn("satellite load failed:", err); sats.loading = false; });
 }
@@ -2046,10 +2058,15 @@ function renderLegend() {
       get on() { return state.showPHA; },
       toggle() { state.showPHA = !state.showPHA; } },
     { label: "Satellites", always: true, css: "#bfe3ff",
-      count: sats.loaded ? sats.count : "—",
+      count: sats.loaded ? sats.payloadCount : "—",
       desc: "Active artificial satellites — Earth's man-made moons, from CelesTrak (live TLEs, propagated with SGP4). Click Earth to fly down and see the LEO swarm, the GPS/MEO ring and the geostationary belt. Shown live: positions update in real time, independent of the time machine.",
       get on() { return sats.visible; },
-      toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null) clearSelection(); } },
+      toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null && state.selSat < sats.payloadCount) clearSelection(); } },
+    { label: "Debris", always: true, css: "#ff7849",
+      count: sats.loaded ? (sats.count - sats.payloadCount) : "—",
+      desc: "Tracked orbital debris — fragments from satellite breakups, catalogued by CelesTrak: the Fengyun-1C anti-satellite test (2007), the Iridium-33 / Cosmos-2251 collision (2009) and the Cosmos-1408 ASAT test (2021). The most significant clouds of human-made 'space junk' still circling Earth, shown live alongside the working satellites.",
+      get on() { return sats.debrisVisible; },
+      toggle() { if (!sats.loaded) { loadSatellites(); sats.debrisVisible = true; return; } sats.debrisVisible = !sats.debrisVisible; if (!sats.debrisVisible && state.selSat != null && state.selSat >= sats.payloadCount) clearSelection(); } },
     { label: "Spacecraft", count: craft.length, css: CRAFT_CSS,
       desc: "Humanity's in-flight deep-space probes — Voyager 1 & 2, the Pioneers, New Horizons, Parker Solar Probe, Lucy and Psyche — with their real flight paths from JPL Horizons. The Voyagers are out past the planets, heading toward interstellar space.",
       get on() { return craftVisible; },
@@ -2076,7 +2093,7 @@ function setRow(rowId, ddId, value) {
 }
 
 // tint the info card to match the selected body's legend colour
-const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff";
+const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff", DEBRIS_CSS = "#ff7849";
 function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
 
 function selectObject(gi, k) {
@@ -2198,7 +2215,7 @@ function selectPlanet(i) {
   const badges = $("info-badges");
   badges.innerHTML = "";
   if (nMoons) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-dwarf">● ${nMoons} moon${nMoons > 1 ? "s" : ""} mapped</span>`);
-  if (i === EARTH_IDX && sats.loaded) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-sat">🛰 ${sats.count.toLocaleString("en-US")} satellites</span>`);
+  if (i === EARTH_IDX && sats.loaded) badges.insertAdjacentHTML("beforeend", `<span class="badge badge-sat">🛰 ${sats.payloadCount.toLocaleString("en-US")} satellites</span>`);
   const el = planetElements(ps.def, state.simJD, { a: 0, e: 0, i: 0, om: 0, w: 0, M: 0 });
   $("info-a").textContent = el.a.toFixed(3) + " au";
   $("info-e").textContent = el.e.toFixed(4);
@@ -2331,10 +2348,13 @@ function selectSatellite(k) {
   moonOrbitCount = 0;
   stopPreview();
   const f = satFacts(k);
-  setCardAccent(SAT_CSS);
+  const isDebris = k >= sats.payloadCount;
+  setCardAccent(isDebris ? DEBRIS_CSS : SAT_CSS);
   $("info-name").textContent = sats.names[k];
-  $("info-class").textContent = "Artificial satellite · NORAD " + f.norad;
-  $("info-badges").innerHTML = `<span class="badge badge-sat">🛰 ${f.regime}</span>`;
+  $("info-class").textContent = (isDebris ? "Orbital debris · NORAD " : "Artificial satellite · NORAD ") + f.norad;
+  $("info-badges").innerHTML = isDebris
+    ? `<span class="badge" style="color:#ff7849;background:rgba(255,120,73,0.13)">⚠ debris · ${f.regime}</span>`
+    : `<span class="badge badge-sat">🛰 ${f.regime}</span>`;
   $("info-link").hidden = true;
   panelMode("sat");
   $("sat-regime").textContent = f.regime;
@@ -2659,11 +2679,12 @@ function pickAt(x, y) {
       bestD = d; bestMoon = k; bestPlanet = -1; best = null;
     }
   }
-  // satellites — only in the Earth-focus view, where they're the whole point
+  // satellites + debris — only in the Earth-focus view, where they're the whole point
   let bestSat = -1;
-  if (sats.loaded && sats.visible && state.focus && state.focus.planet === EARTH_IDX && satEpochFade() > 0.01) {
+  if (sats.loaded && (sats.visible || sats.debrisVisible) && state.focus && state.focus.planet === EARTH_IDX && satEpochFade() > 0.01) {
     for (let k = 0; k < sats.count; k++) {
       if (sats.pos[k * 3] > 1e8) continue;
+      if (!(k < sats.payloadCount ? sats.visible : sats.debrisVisible)) continue;  // skip hidden type
       const p = project(sats.pos[k * 3], sats.pos[k * 3 + 1], sats.pos[k * 3 + 2]);
       if (!p) continue;
       const dx = p[0] - x, dy = p[1] - y, d = dx * dx + dy * dy;

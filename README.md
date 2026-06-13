@@ -45,8 +45,13 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
 - **Earth's artificial moons** — fly down to Earth and the ~15,700 active satellites
   from CelesTrak appear, propagated live with SGP4: the dense LEO swarm, the GPS/MEO
   ring and the geostationary belt. Click any one (the ISS, a Starlink, a GEO bird) for
-  its orbit class, altitude, period and inclination. TLEs are only accurate near the
-  present, so the layer honestly fades if you time-travel far.
+  its orbit class, altitude, period and inclination. Shown **live** — they update at
+  real time, independent of the time machine (you can't watch a 90-minute orbit at
+  1 month/second).
+- **Tracked space junk** — a second, separate layer (in orange) for the major catalogued
+  debris clouds: the Fengyun-1C ASAT test (2007), the Iridium-33 / Cosmos-2251 collision
+  (2009) and the Cosmos-1408 ASAT test (2021) — ~2,600 fragments still circling Earth,
+  each clickable. Off by default; toggle it on to see the LEO junk shell.
 - **Hazard highlight** — toggle a layer that lights up every Potentially Hazardous
   Asteroid in orange.
 - **A time machine** — play the solar system forward or backward at up to 5 years per
@@ -74,7 +79,7 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
 | [JPL CNEOS Sentry API](https://ssd-api.jpl.nasa.gov/doc/sentry.html) | Earth-impact risk table (Torino/Palermo scale, probabilities) |
 | [JPL CNEOS Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html) | Upcoming Earth close approaches |
 | [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) | Orbital elements for all ~457 planetary moons, and flight-path vectors for in-flight spacecraft |
-| [CelesTrak](https://celestrak.org/NORAD/elements/) | Active-satellite TLEs (refreshed daily, propagated client-side with SGP4) |
+| [CelesTrak](https://celestrak.org/NORAD/elements/) | Active-satellite TLEs **and the major debris clouds** (Fengyun-1C, Iridium-33 / Cosmos-2251, Cosmos-1408) — refreshed daily, propagated client-side with SGP4 |
 | [JPL Approximate Planetary Ephemeris](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | Planet positions (embedded Keplerian elements + rates) |
 
 Spacecraft imagery for the ~21 visited/resolved bodies (Ceres, Vesta, Pluto, Bennu,
