@@ -1153,9 +1153,9 @@ const REGION_LABELS = [
   { text: "Oort cloud · inferred", cls: "oort-label", pos: [26000, 8000, 9000],
     in0: 1500, in1: 4000, show: () => OORT.visible, onClick: () => selectRegion("oort") },
   { text: "interstellar space", cls: "oort-label", pos: [110000, 60000, 30000],
-    in0: 55000, in1: 105000, show: () => true },
-  { text: "→ Alpha Centauri · 271,000 au", cls: "alpha-label", pos: [-44100, -74800, -79900],
-    in0: 55000, in1: 105000, show: () => true },
+    in0: 55000, in1: 105000, show: () => true, onClick: () => selectRegion("interstellar") },
+  { text: "→ Alpha Centauri · 276,000 au", cls: "alpha-label", pos: [-44100, -74800, -79900],
+    in0: 55000, in1: 105000, show: () => true, onClick: () => selectRegion("alphacen") },
 ];
 const dwarfList = [];   // { gi, k, name, el } for persistent dwarf-planet labels
 const moonLabelList = []; // { k, name, el } for major moons (radius ≥ 200 km)
@@ -2311,6 +2311,20 @@ const REGIONS = {
     preview: { name: "Oort planetesimal", kind: "c", noComa: true, palette: [120, 140, 165], diam: 8, albedo: 0.06, rot: NaN, img: null },
     cap: "representation · a dormant icy planetesimal — none has ever been imaged",
   },
+  interstellar: {
+    name: "Interstellar Space", cls: "Observed · the medium between the stars", accent: "#9aa7c4",
+    badge: `<span class="badge" style="color:#9aa7c4;background:rgba(154,167,196,0.12)">● both Voyagers are out here</span>`,
+    desc: "Where the Sun's domain finally gives out. The solar wind blows a vast bubble — the heliosphere — through the thin gas drifting between the stars; its edge, the heliopause, lies around 120 au. Past it the Sun is just the brightest star in a cold near-vacuum of hydrogen and helium laced with dust — the Local Interstellar Cloud the whole solar system is currently drifting through. Voyager 1 crossed into it in 2012 and Voyager 2 in 2018, the only craft ever to leave. The Sun's gravity reaches far beyond even here, though — the Oort cloud is still bound to it.",
+    facts: [["heliopause", "≈ 120 au"], ["first crossed", "Voyager 1 · 2012"], ["medium", "Local Interstellar Cloud"], ["to nearest star", "4.24 ly"]],
+    src: "heliopause distances from the Voyager interstellar mission (NASA/JPL)",
+  },
+  alphacen: {
+    name: "Alpha Centauri", cls: "Observed · the nearest star system", accent: "#7dd3fc",
+    badge: `<span class="badge" style="color:#7dd3fc;background:rgba(125,211,252,0.13)">● our nearest stellar neighbour</span>`,
+    desc: "The closest star system to our own — a gravitationally bound trio. Alpha Centauri A is a near-twin of the Sun (G2V); B is a smaller orange dwarf (K1V); and faint red dwarf Proxima Centauri, a touch closer at 4.24 light-years, is the single nearest star to the Sun. Proxima holds at least one known world — the roughly Earth-mass Proxima b, in its habitable zone. This label points along the system's true direction in the sky; at Voyager's speed the trip would take about 75,000 years.",
+    facts: [["distance", "4.37 ly · 276,000 au"], ["nearest star", "Proxima · 4.24 ly"], ["system", "triple · G2V·K1V·M5.5V"], ["nearest planet", "Proxima b"]],
+    src: "distances & spectral types from Gaia / Hipparcos parallax",
+  },
 };
 
 // A region (belt/cloud) — not a body, so it deliberately draws no orbit ring.
@@ -2334,8 +2348,15 @@ function selectRegion(key) {
   $("region-desc").textContent = R.desc;
   $("region-grid").innerHTML = R.facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
   $("region-src").textContent = R.src;
-  renderPreview(R.preview);
-  $("preview-cap").textContent = R.cap;
+  // empty space / a distant star has nothing honest to depict — skip the preview
+  if (R.preview) {
+    $("info-preview").hidden = false;
+    renderPreview(R.preview);
+    $("preview-cap").textContent = R.cap;
+  } else {
+    stopPreview();
+    $("info-preview").hidden = true;
+  }
   $("panel-info").hidden = false;
 }
 
