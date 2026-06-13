@@ -364,7 +364,7 @@ const sats = {
 // In-flight deep-space probes (Horizons trajectory polylines, interpolated).
 const craft = [];                // { name, info, jd, verts, n, pos, inRange, trajBuf, posBuf, sizeBuf, labelEl }
 const CRAFT_CSS = "#8ef0b0";     // spacecraft population colour (green)
-let craftVisible = true;
+let craftVisible = false;        // off by default, like the PHA highlight
 let satCountKnown = 0;           // satellites (from the tiny count file or full load)
 // header "man-made" tally = satellites + in-flight spacecraft
 function updateManMade() {
