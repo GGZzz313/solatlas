@@ -1,11 +1,12 @@
-# ☄️ Asteroid Atlas
+# ☄️ Sol Atlas
 
-**A living, real-data map of the solar system's asteroids — rendered in your browser.**
+**The solar system, live and to scale — rendered in your browser.**
 
-Asteroid Atlas streams the orbital elements of **~50,000 real asteroids and comets**
-straight from NASA/JPL's public APIs, propagates every orbit with Keplerian mechanics,
-and renders the whole solar system as an interactive, GPU-accelerated 3D scene. No
-frameworks, no API keys — open `index.html` over HTTP and fly.
+Sol Atlas streams real orbital data for **every charted world, moon and machine** —
+asteroids, comets, planets, moons, dwarf planets, interstellar visitors, satellites and
+in-flight spacecraft — straight from NASA/JPL and CelesTrak, propagates every orbit, and
+renders the whole system from the Sun to the Oort cloud as an interactive, GPU-accelerated
+3D scene. No frameworks, no API keys — open `index.html` over HTTP and fly.
 
 ![populations](https://img.shields.io/badge/data-NASA%2FJPL%20SSD%2FCNEOS-blue)
 ![deps](https://img.shields.io/badge/dependencies-zero-brightgreen)

@@ -1,6 +1,6 @@
 /* ============================================================
-   Asteroid Atlas
-   A living map of the solar system's asteroids.
+   Sol Atlas
+   The solar system, live and to scale.
 
    Data:
      - NASA/JPL Small-Body Database Query API  (orbital elements)
