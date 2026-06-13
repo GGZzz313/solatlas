@@ -1918,6 +1918,10 @@ function setRow(rowId, ddId, value) {
   else { row.hidden = false; $(ddId).textContent = value; }
 }
 
+// tint the info card to match the selected body's legend colour
+const PLANET_CSS = "#9ec5ff", SUN_CSS = "#ffd479", MOON_CSS = "#c7d2e8", SAT_CSS = "#bfe3ff";
+function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
+
 function selectObject(gi, k) {
   const g = groups[gi];
   const m = g.meta[k];
@@ -1936,6 +1940,7 @@ function selectObject(gi, k) {
     Qx: el[o + 9], Qy: el[o + 10], Qz: el[o + 11],
   });
   const hyper = m.e >= 1;
+  setCardAccent(g.css);
   $("info-name").textContent = m.name;
   $("info-class").textContent =
     (m.dwarf ? "Dwarf planet · " : "") + (CLASS_NAMES[m.cls] || m.cls || "asteroid");
@@ -2028,6 +2033,7 @@ function selectPlanet(i) {
   if (i === EARTH_IDX) loadSatellites();   // Earth's artificial moons, on arrival
   let nMoons = 0;
   for (let k = 0; k < moons.count; k++) if (moons.parentIdx[k] === i) nMoons++;
+  setCardAccent(PLANET_CSS);
   $("info-name").textContent = ps.def.name;
   $("info-class").textContent = "Planet";
   const badges = $("info-badges");
@@ -2060,6 +2066,7 @@ function selectSun() {
   satLayout(false);
   selOrbitCount = 0;
   moonOrbitCount = 0;
+  setCardAccent(SUN_CSS);
   $("info-name").textContent = "Sun";
   $("info-class").textContent = "G2V main-sequence star";
   $("info-badges").innerHTML =
@@ -2096,6 +2103,7 @@ function selectSatellite(k) {
   moonOrbitCount = 0;
   stopPreview();
   const f = satFacts(k);
+  setCardAccent(SAT_CSS);
   $("info-name").textContent = sats.names[k];
   $("info-class").textContent = "Artificial satellite · NORAD " + f.norad;
   $("info-badges").innerHTML = `<span class="badge badge-sat">🛰 ${f.regime}</span>`;
@@ -2119,6 +2127,7 @@ function selectMoon(k) {
   satLayout(false);
   selOrbitCount = 0;
   buildMoonOrbit(k);
+  setCardAccent(MOON_CSS);
   $("info-name").textContent = m.name;
   $("info-class").textContent = "Moon of " + m.parentName;
   $("info-badges").innerHTML = "";

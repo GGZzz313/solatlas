@@ -497,7 +497,9 @@ html, body {
 /* ---- info card ---- */
 #panel-info { left: 16px; bottom: calc(96px + var(--safe-b)); width: 300px; }
 #panel-info .panel-head h2 { text-transform: none; letter-spacing: 0.02em; font-size: 16px; }
-.info-class { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+.info-class { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--sel, var(--accent)); margin-bottom: 12px; }
+/* the card wears the selected body's population colour as a top accent */
+#panel-info { border-top: 2px solid var(--sel, var(--glass-border)); }
 #info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 #info-grid dt { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 2px; }
 #info-grid dd { font-family: var(--mono); font-size: 13px; color: var(--ink); }
