@@ -72,7 +72,7 @@
     <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
       <circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/>
     </svg>
-    <input id="search" type="search" placeholder="Search Apophis, Ceres, Europa…" autocomplete="off" spellcheck="false">
+    <input id="search" type="search" aria-label="Search objects" placeholder="Search Apophis, Ceres, Europa…" autocomplete="off" spellcheck="false">
     <kbd class="search-kbd" aria-hidden="true">/</kbd>
     <ul id="search-results" hidden></ul>
   </div>
@@ -80,10 +80,10 @@
 
 <!-- ======================= Mobile toggles ======================= -->
 <div id="fab-col">
-  <button id="fab-legend" class="fab" title="Layers & legend" aria-label="Layers and legend">◈</button>
+  <button id="fab-legend" class="fab" title="Populations" aria-label="Populations">◈</button>
   <button id="fab-cad" class="fab" title="Close approaches" aria-label="Close approaches">⚠</button>
-  <button id="fab-sentry" class="fab" title="Sentry impact risk" aria-label="Sentry impact risk">☢</button>
-  <button id="fab-events" class="fab" title="Upcoming events" aria-label="Upcoming events">◷</button>
+  <button id="fab-sentry" class="fab" title="Sentry watchlist" aria-label="Sentry watchlist">☢</button>
+  <button id="fab-events" class="fab" title="Upcoming" aria-label="Upcoming">◷</button>
   <button id="fab-sun" class="fab" title="Center on the Sun" aria-label="Center on the Sun">☀</button>
   <button id="fab-view" class="fab" title="Top-down view" aria-label="Toggle top-down view">⊙</button>
 </div>
@@ -178,7 +178,7 @@
     <div class="time-controls">
       <button id="btn-rev" class="tbtn" title="Reverse time" aria-label="Reverse time">⏴</button>
       <button id="btn-play" class="tbtn tbtn-main" title="Play / pause" aria-label="Play or pause">❚❚</button>
-      <div class="speed-chips" id="speed-chips">
+      <div class="speed-chips" id="speed-chips" title="Simulation speed — sim time elapsed per real second">
         <button data-dps="1">1 d/s</button>
         <button data-dps="7">1 wk/s</button>
         <button data-dps="30" class="on">1 mo/s</button>
@@ -186,7 +186,7 @@
         <button data-dps="1826">5 yr/s</button>
       </div>
     </div>
-    <div id="zoom-bar" title="Click or drag to zoom" role="slider" aria-label="Zoom level">
+    <div id="zoom-bar" title="Click or drag to zoom" role="slider" aria-label="Zoom level" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <span class="zb-track"></span>
       <span class="zb-oort" id="zb-oort"></span>
       <span class="zb-tick" id="zb-earth" title="Earth"></span>

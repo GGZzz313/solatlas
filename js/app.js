@@ -1038,6 +1038,7 @@ function propagate() {
 const eye = new Float64Array(3);
 let lastFrame = performance.now();
 let simAtLastPropagate = NaN;
+const _propTmp = new Float64Array(3), _planetUp = new Float32Array(3);   // per-frame planet scratch (no realloc)
 
 // True-scale: real physical radii (au) fed into the point-size attribute. The
 // shader already projects size·focalPx/distance, so real radii make most bodies
@@ -1075,17 +1076,10 @@ function ensureTrueSizes() {
 const TAIL_R0 = 3.5, TAIL_LEN = 0.9, TAIL_MAX = 1.4;   // au
 let tailVerts = new Float32Array(0), tailBuf = null;
 function drawCometTails() {
-  let n = 0;
-  for (const gi of [GI.COM, GI.LPC]) {
-    const g = groups[gi]; if (!g.count || !g.visible) continue;
-    for (let k = 0; k < g.count; k++) {
-      const x = g.pos[k * 3], y = g.pos[k * 3 + 1], z = g.pos[k * 3 + 2];
-      const r = Math.hypot(x, y, z);
-      if (r > 0 && r < TAIL_R0) n++;
-    }
-  }
-  if (!n) return;
-  if (tailVerts.length < n * 6) tailVerts = new Float32Array(n * 6);
+  let cap = 0;
+  for (const gi of [GI.COM, GI.LPC]) { const g = groups[gi]; if (g.count && g.visible) cap += g.count; }
+  if (!cap) return;
+  if (tailVerts.length < cap * 6) tailVerts = new Float32Array(cap * 6);
   let o = 0;
   for (const gi of [GI.COM, GI.LPC]) {
     const g = groups[gi]; if (!g.count || !g.visible) continue;
@@ -1099,6 +1093,7 @@ function drawCometTails() {
       tailVerts[o++] = x + x * inv * L; tailVerts[o++] = y + y * inv * L; tailVerts[o++] = z + z * inv * L; // tip (anti-sunward)
     }
   }
+  if (!o) return;
   gl.useProgram(lnProg);
   gl.uniformMatrix4fv(LN.uVP, false, vp);
   gl.enableVertexAttribArray(LN.aPos);
@@ -1122,19 +1117,22 @@ function render(now) {
   // deep-link: consume lazy sat restores, then mirror the live view into the URL (debounced)
   if (pendingSatSel != null && sats.loaded) { selectSatellite(pendingSatSel); pendingSatSel = null; }
   if (pendingSatLayers && sats.loaded) { sats.visible = pendingSatLayers.wantSat; sats.debrisVisible = pendingSatLayers.wantDeb; pendingSatLayers = null; renderLegend(); }
-  if (loadedOnce && !isApplying) { const h = encodeState(); if (h !== lastHash) { lastHash = h; scheduleHashWrite(h); } }
+  if (loadedOnce && !isApplying && now - lastHashCheck > 200) {   // ~5 Hz; the write is already debounced
+    lastHashCheck = now;
+    const h = encodeState(); if (h !== lastHash) { lastHash = h; scheduleHashWrite(h); }
+  }
 
   // propagate asteroid + planet + moon positions when time moved — BEFORE the
   // camera reads focusPosition(), or a focused planet is aimed at one frame late
   if (state.simJD !== simAtLastPropagate || state.needFullUpdate) {
     propagate();
     simAtLastPropagate = state.simJD;
-    const tmp = new Float64Array(3);
     for (const ps of planetState) {
-      planetPosition(ps.def, state.simJD, tmp);
-      ps.pos.set(tmp);
+      planetPosition(ps.def, state.simJD, _propTmp);
+      ps.pos.set(_propTmp);
+      _planetUp.set(_propTmp);   // narrow Float64 → Float32 for the attribute upload
       gl.bindBuffer(gl.ARRAY_BUFFER, ps.posBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tmp), gl.DYNAMIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, _planetUp, gl.DYNAMIC_DRAW);
     }
     updateMoonPositions(state.simJD);
     if (state.selMoon != null) buildMoonOrbit(state.selMoon);
@@ -1649,7 +1647,9 @@ const zbFrac = (d) => (Math.log10(d) - ZB_LO) / (ZB_HI - ZB_LO);
 })();
 const zoomThumbEl = $("zoom-thumb");
 function updateZoomBar() {
-  zoomThumbEl.style.left = (clamp(zbFrac(state.cam.dist), 0, 1) * 100).toFixed(2) + "%";
+  const f = clamp(zbFrac(state.cam.dist), 0, 1);
+  zoomThumbEl.style.left = (f * 100).toFixed(2) + "%";
+  zoomBarEl.setAttribute("aria-valuenow", Math.round(f * 100));
 }
 
 /* ---- click / tap / drag the zoom bar to jump to that zoom level (no wheel needed) ---- */
@@ -1675,6 +1675,23 @@ zoomBarEl.addEventListener("pointermove", (ev) => { if (zbDragging) zoomBarTo(ev
 function zbEnd(ev) { zbDragging = false; try { zoomBarEl.releasePointerCapture(ev.pointerId); } catch (_) { /* noop */ } }
 zoomBarEl.addEventListener("pointerup", zbEnd);
 zoomBarEl.addEventListener("pointercancel", zbEnd);
+// keyboard operability for the slider (focused only); stopPropagation so arrows
+// don't also reach the global cycleSpeed handler
+zoomBarEl.addEventListener("keydown", (ev) => {
+  const cur = clamp(zbFrac(state.cam.dist), 0, 1);
+  let f = cur;
+  if (ev.key === "ArrowRight" || ev.key === "ArrowUp") f = clamp(cur + 0.04, 0, 1);
+  else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") f = clamp(cur - 0.04, 0, 1);
+  else if (ev.key === "Home") f = 0;
+  else if (ev.key === "End") f = 1;
+  else return;
+  ev.preventDefault(); ev.stopPropagation();
+  const prev = state.cam.tDist;
+  state.camEaseRate = 9;
+  state.cam.tDist = clamp(Math.pow(10, ZB_LO + f * (ZB_HI - ZB_LO)), minDist(), MAX_DIST);
+  farOrientIfCrossed(prev);
+  dismissHint();
+});
 
 /* ---- brand-mark mini-orrery, spin synced to the time machine's speed & direction ---- */
 const bmOrbs = ["bm-o1", "bm-o2", "bm-o3"].map((c) => document.querySelector(".brand-mark ." + c));
@@ -2418,7 +2435,7 @@ function sentrySelect(des) {
 function renderSentry(sentry) {
   const list = $("sentry-list");
   const objs = (sentry && sentry.objects) || [];
-  if (!objs.length) { list.innerHTML = '<li class="cad-empty">Sentry risk table unavailable</li>'; return; }
+  if (!objs.length) { list.innerHTML = '<li class="cad-empty">sentry risk table unavailable</li>'; return; }
   $("sentry-count").textContent = objs.length.toLocaleString("en-US");
   list.innerHTML = "";
   for (const o of objs.slice(0, 50)) {
@@ -2450,12 +2467,15 @@ function renderSentry(sentry) {
    and the row-click visibility toggle. */
 function legendRow(label, count, css, desc, onToggle, isOn) {
   const li = document.createElement("li");
+  li.tabIndex = 0;
+  li.setAttribute("role", "button");
+  li.setAttribute("aria-pressed", String(!!isOn));
   if (!isOn) li.classList.add("off");
   li.innerHTML =
     `<span class="dot" style="background:${css};box-shadow:0 0 8px ${css}"></span>` +
     `<span class="lname">${label}</span>` +
     `<span class="lcount">${count.toLocaleString("en-US")}</span>` +
-    `<button class="linfo" aria-label="About ${label}" title="What is this?">ⓘ</button>` +
+    `<button class="linfo" aria-label="About ${label}" title="What is this?" tabindex="-1">ⓘ</button>` +
     `<p class="ldesc" hidden></p>`;
   li.querySelector(".ldesc").textContent = desc;
   li.addEventListener("click", (ev) => {
@@ -2466,6 +2486,10 @@ function legendRow(label, count, css, desc, onToggle, isOn) {
     }
     if (ev.target.closest(".ldesc")) return;   // reading isn't toggling
     onToggle(li);
+    li.setAttribute("aria-pressed", String(!li.classList.contains("off")));
+  });
+  li.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); li.click(); }
   });
   return li;
 }
@@ -2474,7 +2498,7 @@ function renderLegend() {
   const ul = $("legend-list");
   ul.innerHTML = "";
   ul.appendChild(legendRow("Sun", 1, "#ffd479",
-    "Our star — a G2V main-sequence dwarf holding 99.86% of the solar system's mass. Click it for details.",
+    "Our star — a G2V main-sequence star holding 99.86% of the solar system's mass. Click it for details.",
     (li) => {
       state.showSun = !state.showSun;
       li.classList.toggle("off", !state.showSun);
@@ -2524,7 +2548,7 @@ function renderLegend() {
       toggle() { if (!sats.loaded) { loadSatellites(); sats.visible = true; return; } sats.visible = !sats.visible; if (!sats.visible && state.selSat != null && state.selSat < sats.payloadCount) clearSelection(); } },
     { label: "Debris", always: true, css: "#ff7849",
       count: sats.loaded ? (sats.count - sats.payloadCount) : "—",
-      desc: "Tracked orbital debris — fragments from satellite breakups, catalogued by CelesTrak: the Fengyun-1C anti-satellite test (2007), the Iridium-33 / Cosmos-2251 collision (2009) and the Cosmos-1408 ASAT test (2021). The most significant clouds of human-made 'space junk' still circling Earth, shown live alongside the working satellites.",
+      desc: "Tracked orbital debris — fragments from satellite breakups, catalogued by CelesTrak: the Fengyun-1C anti-satellite test (2007), the Iridium-33 / Cosmos-2251 collision (2009) and the Cosmos-1408 ASAT test (2021). The most significant clouds of man-made 'space junk' still circling Earth, shown live alongside the working satellites.",
       get on() { return sats.debrisVisible; },
       toggle() { if (!sats.loaded) { loadSatellites(); sats.debrisVisible = true; return; } sats.debrisVisible = !sats.debrisVisible; if (!sats.debrisVisible && state.selSat != null && state.selSat >= sats.payloadCount) clearSelection(); } },
     { label: "Spacecraft", count: craft.length, css: CRAFT_CSS,
@@ -2537,10 +2561,13 @@ function renderLegend() {
     const li = legendRow(o.label, o.count, o.css, o.desc, (el) => {
       o.toggle();
       el.classList.toggle("off", !o.on);
+      $("fab-legend").classList.toggle("overlay-active", overlays.some((x) => x.on));
     }, o.on);
     li.classList.add("legend-toggle");
     ul.appendChild(li);
   }
+  // signal on the closed legend FAB that a non-default overlay (true-scale, PHA, …) is changing the view
+  $("fab-legend").classList.toggle("overlay-active", overlays.some((o) => o.on));
 }
 
 /* ============================================================
@@ -2558,10 +2585,11 @@ function setCardAccent(css) { $("panel-info").style.setProperty("--sel", css); }
 
 // ---- deep-link / shareable-URL state (defined here so select* can set currentRegion) ----
 let currentRegion = null;      // which REGIONS key is showing (regions set no state.sel* flag)
-let isApplying = false, lastHash = "", hashTimer = 0;
+let isApplying = false, lastHash = "", hashTimer = 0, lastHashCheck = 0;
 let pendingSatSel = null, pendingSatLayers = null, skipDolly = false;
 
 function selectObject(gi, k) {
+  if (tourActive && !tourStepping) cancelTour();
   const g = groups[gi];
   const m = g.meta[k];
   state.selected = { group: gi, index: k };
@@ -2622,7 +2650,9 @@ function selectObject(gi, k) {
   setRow("info-row-albedo", "info-albedo", isFinite(m.albedo) ? m.albedo.toFixed(2) : null);
   setRow("info-row-rot", "info-rot", isFinite(m.rot) && m.rot > 0 ? formatHours(m.rot) : null);
   setRow("info-row-spec", "info-spec", m.spec || null);
-  setRow("info-row-moid", "info-moid", isFinite(m.moid) ? m.moid.toFixed(3) + " au" : null);
+  setRow("info-row-moid", "info-moid", isFinite(m.moid)
+    ? (m.moid < 0.001 ? m.moid.toFixed(4) + " au · " + (m.moid * 389.17).toFixed(2) + " LD" : m.moid.toFixed(3) + " au")
+    : null);
   // honesty: how stale / well-constrained the orbit solution is
   setRow("info-row-lastobs", "info-lastobs", m.lastObs);
   setRow("info-row-arc", "info-arc", isFinite(m.arc) ? formatArc(m.arc) : null);
@@ -2673,6 +2703,7 @@ function unfocus() {
 }
 
 function selectPlanet(i) {
+  if (tourActive && !tourStepping) cancelTour();
   const ps = planetState[i];
   const facts = PLANET_FACTS[i];
   state.selPlanet = i;
@@ -2714,6 +2745,7 @@ function selectPlanet(i) {
 }
 
 function selectSun() {
+  if (tourActive && !tourStepping) cancelTour();
   state.selSun = true;
   state.selected = null;
   state.selPlanet = null;
@@ -2843,6 +2875,7 @@ function panelMode(mode) {
 const satLayout = (on) => panelMode(on ? "sat" : "body");
 
 function selectSatellite(k) {
+  if (tourActive && !tourStepping) cancelTour();
   state.selSat = k;
   state.selected = null;
   state.selPlanet = null;
@@ -2871,6 +2904,7 @@ function selectSatellite(k) {
 }
 
 function selectCraft(i) {
+  if (tourActive && !tourStepping) cancelTour();
   const c = craft[i];
   if (!c) return;
   state.selCraft = i;
@@ -2899,6 +2933,7 @@ function selectCraft(i) {
 }
 
 function selectMoon(k) {
+  if (tourActive && !tourStepping) cancelTour();
   const m = moons.meta[k];
   state.selMoon = k;
   state.selected = null;
@@ -3543,12 +3578,13 @@ const TOUR = [
   { label: "Alpha Centauri · our nearest neighbour", dwell: 8000,
     go() { state.focus = null; retarget(); Object.assign(state.cam, { tYaw: FAR_YAW, tPitch: FAR_PITCH, tDist: 80000 }); selectRegion("alphacen"); } },
 ];
-let tourActive = false, tourGen = 0, tourTimer = null, tourIdx = 0;
+let tourActive = false, tourGen = 0, tourTimer = null, tourIdx = 0, tourStepping = false;
 const tourHud = $("tour-hud");
 function runStep(gen, i) {
   if (gen !== tourGen) return;                 // a cancelled/restarted tour
   if (i >= TOUR.length) { cancelTour(); return; }
-  tourIdx = i; const s = TOUR[i]; s.go();
+  tourIdx = i; const s = TOUR[i];
+  tourStepping = true; s.go(); tourStepping = false;   // the tour's own selects don't self-cancel
   if (tourHud) tourHud.textContent = s.label + "  ·  " + (i + 1) + " / " + TOUR.length + "  ·  tap or Esc to exit";
   tourTimer = setTimeout(() => runStep(gen, i + 1), s.dwell);
 }
@@ -3609,9 +3645,18 @@ document.querySelectorAll(".panel-close").forEach((b) =>
     p.classList.add("closed");
   })
 );
+const FAB_PANELS = [["panel-legend", "fab-legend"], ["panel-cad", "fab-cad"], ["panel-sentry", "fab-sentry"], ["panel-events", "fab-events"]];
 function togglePanel(id, fab) {
   const p = $(id);
   const isOpen = p.classList.contains("open") || (!p.classList.contains("closed") && getComputedStyle(p).display !== "none");
+  if (!isOpen) {
+    // opening one closes the other FAB-owned panels so they never overlap
+    for (const [pid, fid] of FAB_PANELS) {
+      if (pid === id) continue;
+      $(pid).classList.add("closed"); $(pid).classList.remove("open");
+      $(fid).classList.remove("on");
+    }
+  }
   if (isOpen) { p.classList.remove("open"); p.classList.add("closed"); }
   else { p.classList.add("open"); p.classList.remove("closed"); }
   if (fab) fab.classList.toggle("on", !isOpen);
