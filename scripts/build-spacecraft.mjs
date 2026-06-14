@@ -40,6 +40,9 @@ const CRAFT = [
   { id: "-255", name: "Psyche", op: "NASA/JPL", launch: 2023, status: "active",
     note: "En route to the metal asteroid 16 Psyche, arriving 2029.",
     start: "2023-10-16", stop: "2029-06-01", step: "20d" },
+  { id: "-143205", name: "Starman", op: "SpaceX", launch: 2018, status: "silent",
+    note: "Elon Musk's cherry-red Tesla Roadster — launched on Falcon Heavy's maiden flight (6 Feb 2018) with a spacesuited 'Starman' dummy at the wheel and 'DON'T PANIC' on the dash. Coasting on a Sun-orbit that crosses Mars; no signal since launch day.",
+    start: "2018-02-08", stop: "2050-01-01", step: "20d" },
 ];
 
 async function getJSON(url, tries = 3) {

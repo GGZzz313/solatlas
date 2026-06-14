@@ -46,7 +46,9 @@ renders the whole system from the Sun to the Oort cloud as an interactive, GPU-a
 - **In-flight spacecraft** — humanity's deep-space probes (Voyager 1 & 2, Pioneer 10 &
   11, New Horizons, Parker Solar Probe, Lucy, Psyche) on their real flight paths from
   JPL Horizons. The Voyagers are out past 165 au, coasting toward the interstellar-space
-  signpost; click any probe for its live distance, speed and mission status.
+  signpost; click any probe for its live distance, speed and mission status. Search
+  **"Starman"** for the Easter egg — Elon Musk's Tesla Roadster, tracked by Horizons on
+  its real Mars-crossing Sun-orbit since 2018.
 - **Earth's artificial moons** — fly down to Earth and the ~15,700 active satellites
   from CelesTrak appear, propagated live with SGP4: the dense LEO swarm, the GPS/MEO
   ring and the geostationary belt. Click any one (the ISS, a Starlink, a GEO bird) for
