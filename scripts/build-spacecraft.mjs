@@ -42,6 +42,7 @@ const CRAFT = [
     start: "2023-10-16", stop: "2029-06-01", step: "20d" },
   { id: "-143205", name: "Starman", op: "SpaceX", launch: 2018, status: "silent",
     note: "Elon Musk's cherry-red Tesla Roadster — launched on Falcon Heavy's maiden flight (6 Feb 2018) with a spacesuited 'Starman' dummy at the wheel and 'DON'T PANIC' on the dash. Coasting on a Sun-orbit that crosses Mars; no signal since launch day.",
+    img: ["starman.jpg", "SpaceX (public domain)"],
     start: "2018-02-08", stop: "2050-01-01", step: "20d" },
 ];
 
@@ -77,7 +78,7 @@ async function trajectory(c) {
     points.push([Math.round(jd * 10) / 10, +x.toFixed(4), +y.toFixed(4), +z.toFixed(4)]);
   }
   if (!points.length) throw new Error("no points parsed");
-  return { name: c.name, op: c.op, launch: c.launch, status: c.status, note: c.note, points };
+  return { name: c.name, op: c.op, launch: c.launch, status: c.status, note: c.note, img: c.img, points };
 }
 
 async function main() {

@@ -2929,6 +2929,8 @@ function selectCraft(i) {
   $("info-badges").innerHTML = `<span class="badge badge-craft">🚀 In-flight probe</span>`;
   $("info-link").hidden = true;
   panelMode("craft");
+  // most craft cards have no photo; Starman (the Roadster) carries a real SpaceX shot
+  if (info.img) { $("info-preview").hidden = false; showPhotoPreview(info.img[0], info.img[1]); }
   $("craft-note").textContent = info.note || "";
   $("craft-launch").textContent = info.launch || "—";
   $("craft-status").textContent = info.status === "silent" ? "silent · still coasting" : "active";
